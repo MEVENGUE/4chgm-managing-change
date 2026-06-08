@@ -42,9 +42,11 @@ def root():
 
 @app.get("/health")
 def health():
+    db_ok = bool(settings.database_url)
     return {
         "status": "ok",
         "openai": settings.openai_enabled,
         "r2": settings.r2_enabled,
+        "database": db_ok,
         "environment": settings.environment,
     }

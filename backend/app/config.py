@@ -17,7 +17,7 @@ class Settings(BaseSettings):
 
     cors_origins: str = "http://localhost:3000"
 
-    database_url: str = "postgresql://postgres:postgres@localhost:5432/4chgm"
+    database_url: str = Field(default="", validation_alias="DATABASE_URL")
     redis_url: str = "redis://localhost:6379/0"
 
     jwt_secret: str = "change-me-in-production-use-64-char-secret"

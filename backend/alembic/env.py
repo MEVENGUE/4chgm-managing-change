@@ -9,7 +9,10 @@ from app.models import *  # noqa: F401, F403
 
 config = context.config
 settings = get_settings()
-config.set_main_option("sqlalchemy.url", settings.database_url)
+_db = settings.database_url or ""
+if _db.startswith("postgres://"):
+    _db = _db.replace("postgres://", "postgresql://", 1)
+config.set_main_option("sqlalchemy.url", _db or "postgresql://127.0.0.1:5432/4chgm")
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
