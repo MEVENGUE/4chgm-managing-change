@@ -42,3 +42,25 @@ export function clearSessionStorage() {
 export function generateToken(): string {
   return `4chgm_${Date.now()}_${Math.random().toString(36).slice(2, 14)}`
 }
+
+export function getAccessToken(): string | null {
+  try {
+    const raw = loadSessionRaw()
+    if (!raw) return null
+    const session = JSON.parse(raw) as { token?: string }
+    return session.token ?? null
+  } catch {
+    return null
+  }
+}
+
+export function getRefreshToken(): string | null {
+  try {
+    const raw = loadSessionRaw()
+    if (!raw) return null
+    const session = JSON.parse(raw) as { refreshToken?: string }
+    return session.refreshToken ?? null
+  } catch {
+    return null
+  }
+}

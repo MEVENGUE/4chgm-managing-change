@@ -12,6 +12,9 @@ import {
   type EngineResult,
 } from '@/services/ai'
 import { chatWithApi, analyzeDocumentWithApi } from '@/services/aiApi'
+import { analyzeDocumentRagWithApi, chatRagWithApi, streamRagWithApi } from '@/services/copilotApi'
+import { getAccessToken } from '@/services/auth/tokenService'
+import { isApiEnabled } from '@/lib/apiClient'
 import { hasDataConsent } from '@/lib/dataPolicy'
 import { retrieve } from '@/services/knowledge'
 import type { AiThread, AiMessage } from '@/types/copilot'
@@ -108,6 +111,63 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
     [persist]
   )
 
+  const runStreamFromApi = useCallback(
+    async (threadId: string, userMsg: AiMessage, prompt: string) => {
+      updateThread(threadId, (t) => ({
+        ...t,
+        title: t.messages.filter((m) => m.role === 'user').length === 0 ? userMsg.content.slice(0, 40) : t.title,
+        updatedAt: new Date().toISOString(),
+        messages: [...t.messages, userMsg],
+      }))
+      setStreaming(true)
+      const assistantId = `a-${Date.now()}`
+      let full = ''
+      let citations = retrieve(prompt)
+      let doneMeta: { threadId?: string; citations?: typeof citations } = {}
+      for await (const event of streamRagWithApi(prompt, ctx, threadId)) {
+        if (event.type === 'token') {
+          full += event.content
+          if (full.trim()) {
+            updateThread(threadId, (t) => {
+              const exists = t.messages.some((m) => m.id === assistantId)
+              const msg = { id: assistantId, role: 'assistant' as const, content: full, timestamp: new Date().toISOString() }
+              return {
+                ...t,
+                messages: exists ? t.messages.map((m) => (m.id === assistantId ? { ...m, content: full } : m)) : [...t.messages, msg],
+              }
+            })
+          }
+        } else if (event.type === 'done') {
+          citations = event.citations?.length ? event.citations : citations
+          doneMeta = event
+        }
+      }
+      const mock = generateAnswer(prompt, ctx)
+      updateThread(
+        threadId,
+        (t) => ({
+          ...t,
+          updatedAt: new Date().toISOString(),
+          messages: t.messages.map((m) =>
+            m.id === assistantId
+              ? {
+                  ...m,
+                  citations,
+                  actions: mock.actions,
+                  artifact: mock.artifact,
+                  contextUsed: ['RAG stream', 'OpenAI', ...citations.map((c) => c.title)],
+                }
+              : m
+          ),
+        }),
+        true
+      )
+      if (doneMeta.threadId) setActiveThreadId(doneMeta.threadId)
+      setStreaming(false)
+    },
+    [ctx, updateThread]
+  )
+
   const runStream = useCallback(
     async (threadId: string, userMsg: AiMessage, result: ReturnType<typeof generateAnswer>) => {
       // Set thread title from first user message
@@ -154,8 +214,17 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
   )
 
   const resolveAnswer = useCallback(
-    async (prompt: string, docMode: { title: string; text: string } | null): Promise<EngineResult> => {
+    async (prompt: string, docMode: { title: string; text: string } | null): Promise<EngineResult | null> => {
       if (docMode) {
+        const rag = await analyzeDocumentRagWithApi(docMode.title, docMode.text, ctx, activeThreadId)
+        if (rag?.content) {
+          return {
+            content: rag.content,
+            citations: rag.citations,
+            contextUsed: rag.contextUsed,
+            actions: rag.actions,
+          }
+        }
         const api = await analyzeDocumentWithApi(docMode.title, docMode.text, ctx, hasDataConsent())
         if (api?.content) {
           const citations = retrieve(docMode.text)
@@ -167,6 +236,16 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
           }
         }
         return answerForDocument(docMode.text, ctx)
+      }
+      if (isApiEnabled() && getAccessToken()) return null
+      const rag = await chatRagWithApi(prompt, ctx, activeThreadId)
+      if (rag?.content) {
+        return {
+          content: rag.content,
+          citations: rag.citations,
+          contextUsed: rag.contextUsed,
+          actions: rag.actions,
+        }
       }
       const api = await chatWithApi(prompt, ctx)
       if (api?.content) {
@@ -182,7 +261,7 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
       }
       return generateAnswer(prompt, ctx)
     },
-    [ctx]
+    [ctx, activeThreadId]
   )
 
   const sendMessage = useCallback(
@@ -190,10 +269,14 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
       const value = text.trim()
       if (!value || streaming || !activeThreadId) return
       const userMsg: AiMessage = { id: `u-${Date.now()}`, role: 'user', content: value, timestamp: new Date().toISOString() }
+      if (isApiEnabled() && getAccessToken()) {
+        await runStreamFromApi(activeThreadId, userMsg, value)
+        return
+      }
       const result = await resolveAnswer(value, null)
-      await runStream(activeThreadId, userMsg, result)
+      if (result) await runStream(activeThreadId, userMsg, result)
     },
-    [streaming, activeThreadId, resolveAnswer, runStream]
+    [streaming, activeThreadId, resolveAnswer, runStream, runStreamFromApi]
   )
 
   const sendDocument = useCallback(
@@ -208,7 +291,7 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
         timestamp: new Date().toISOString(),
       }
       const result = await resolveAnswer('', { title: title || 'Untitled', text: value })
-      await runStream(activeThreadId, userMsg, result)
+      if (result) await runStream(activeThreadId, userMsg, result)
     },
     [streaming, activeThreadId, resolveAnswer, runStream]
   )

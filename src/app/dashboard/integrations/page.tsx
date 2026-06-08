@@ -5,6 +5,9 @@ import { motion } from 'framer-motion'
 import { Plug, Check, RefreshCw, AlertTriangle, Plus, Database } from 'lucide-react'
 import PageHeader from '@/components/layout/PageHeader'
 import { useTranslation } from '@/i18n/I18nProvider'
+import { isApiEnabled } from '@/lib/apiClient'
+import { getAccessToken } from '@/services/auth/tokenService'
+import { connectIntegration, fetchIntegrationsFromApi, syncIntegration } from '@/services/integrationsApi'
 import { CONNECTORS, type Connector, type ConnectorStatus } from '@/services/connectors'
 
 const STATUS_META: Record<ConnectorStatus, { label: string; color: string; icon: typeof Check }> = {
@@ -14,7 +17,15 @@ const STATUS_META: Record<ConnectorStatus, { label: string; color: string; icon:
   error: { label: 'Action needed', color: 'var(--danger)', icon: AlertTriangle },
 }
 
-function ConnectorCard({ connector, index }: { connector: Connector; index: number }) {
+function ConnectorCard({
+  connector,
+  index,
+  onAction,
+}: {
+  connector: Connector
+  index: number
+  onAction: (id: string, action: 'connect' | 'sync' | 'manage') => void
+}) {
   const meta = STATUS_META[connector.status]
   const Icon = meta.icon
   const isLive = connector.status === 'connected' || connector.status === 'syncing'
@@ -60,9 +71,10 @@ function ConnectorCard({ connector, index }: { connector: Connector; index: numb
           <span className="text-[11px] text-[var(--text-muted)]">{connector.status === 'error' ? connector.lastSync : 'Not connected'}</span>
         )}
         <button
+          onClick={() => onAction(connector.id, isLive ? 'manage' : connector.status === 'syncing' ? 'sync' : 'connect')}
           className="rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-1 text-[11px] font-medium text-[var(--text-secondary)] transition hover:border-[var(--border-medium)] hover:text-[var(--text-primary)]"
         >
-          {isLive ? 'Manage' : connector.status === 'error' ? 'Reconnect' : 'Connect'}
+          {isLive ? 'Sync' : connector.status === 'error' ? 'Reconnect' : connector.status === 'syncing' ? 'Syncing…' : 'Connect'}
         </button>
       </div>
     </motion.div>
@@ -75,8 +87,59 @@ export default function IntegrationsPage() {
   const [filter, setFilter] = useState<string>('All')
 
   useEffect(() => {
-    setConnectors(CONNECTORS)
+    async function load() {
+      let list = [...CONNECTORS]
+      if (isApiEnabled() && getAccessToken()) {
+        const api = await fetchIntegrationsFromApi()
+        if (api) {
+          list = list.map((c) => {
+            const row = api.find((a) => a.provider === c.id)
+            if (!row) return c
+            return {
+              ...c,
+              status: (row.status === 'connected' ? 'connected' : row.status === 'syncing' ? 'syncing' : row.status === 'available' ? 'available' : c.status) as ConnectorStatus,
+              records: row.records || c.records,
+              lastSync: row.lastSync || c.lastSync,
+            }
+          })
+        }
+      }
+      setConnectors(list)
+    }
+    load()
   }, [])
+
+  async function handleAction(id: string, action: 'connect' | 'sync' | 'manage') {
+    if (!['jira', 'github', 'notion'].includes(id)) return
+    if (action === 'connect') {
+      setConnectors((prev) => prev.map((c) => (c.id === id ? { ...c, status: 'syncing' } : c)))
+      const res = await connectIntegration(id)
+      if (res?.ok) {
+        const api = await fetchIntegrationsFromApi()
+        if (api) {
+          setConnectors((prev) =>
+            prev.map((c) => {
+              const row = api.find((a) => a.provider === c.id)
+              return row && c.id === id ? { ...c, status: 'connected', records: row.records, lastSync: 'just now' } : c
+            })
+          )
+        }
+      }
+      return
+    }
+    setConnectors((prev) => prev.map((c) => (c.id === id ? { ...c, status: 'syncing' } : c)))
+    await syncIntegration(id)
+    const api = await fetchIntegrationsFromApi()
+    if (api) {
+      setConnectors((prev) =>
+        prev.map((c) => {
+          const row = api.find((a) => a.provider === c.id)
+          if (!row || c.id !== id) return c
+          return { ...c, status: 'connected', records: row.records, lastSync: row.lastSync ?? 'just now' }
+        })
+      )
+    }
+  }
 
   const categories = useMemo(() => ['All', ...Array.from(new Set(CONNECTORS.map((c) => c.category)))], [])
   const filtered = filter === 'All' ? connectors : connectors.filter((c) => c.category === filter)
@@ -137,7 +200,7 @@ export default function IntegrationsPage() {
 
       <section className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {filtered.map((c, i) => (
-          <ConnectorCard key={c.id} connector={c} index={i} />
+          <ConnectorCard key={c.id} connector={c} index={i} onAction={handleAction} />
         ))}
       </section>
     </div>

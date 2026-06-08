@@ -59,6 +59,14 @@ export async function analyzeDocumentWithApi(
 export async function generateMermaidWithApi(prompt: string, context?: string): Promise<MermaidApiResponse | null> {
   if (!isApiEnabled()) return null
   try {
+    const { getAccessToken } = await import('@/services/auth/tokenService')
+    if (getAccessToken()) {
+      const res = await apiPost<MermaidApiResponse & { storageUrl?: string }>('/api/v1/diagrams/mermaid', {
+        prompt,
+        context: context?.slice(0, 8000),
+      })
+      return { code: res.code, note: res.note + (res.storageUrl ? ' · saved to R2' : ''), mock: res.mock }
+    }
     return await apiPost<MermaidApiResponse>('/api/ai/mermaid', {
       prompt,
       context: context?.slice(0, 8000),

@@ -5,6 +5,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Upload, X, FileText, Loader2 } from 'lucide-react'
 import DataProcessingConsent from '@/components/legal/DataProcessingConsent'
 import { hasDataConsent } from '@/lib/dataPolicy'
+import { isApiEnabled } from '@/lib/apiClient'
+import { getAccessToken } from '@/services/auth/tokenService'
+import { uploadDocumentToApi } from '@/services/documentsApi'
 import { ingestDocument, readFileAsText } from '@/services/knowledge'
 
 type Props = { open: boolean; onClose: () => void; onIngested: () => void }
@@ -15,15 +18,22 @@ export default function IngestDocumentModal({ open, onClose, onIngested }: Props
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
 
   async function handleFile(file: File) {
     setError('')
+    setSelectedFile(file)
+    if (!title) setTitle(file.name.replace(/\.[^.]+$/, ''))
     try {
       const text = await readFileAsText(file)
       setContent(text)
-      if (!title) setTitle(file.name.replace(/\.[^.]+$/, ''))
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Lecture impossible')
+    } catch {
+      if (isApiEnabled() && getAccessToken()) {
+        setContent(`[Fichier binaire — parsing côté serveur : ${file.name}]`)
+      } else {
+        setError('Formats supportés en local : .txt, .md, .csv, .json, .log. Connectez l\'API pour PDF/DOCX.')
+        setSelectedFile(null)
+      }
     }
   }
 
@@ -37,12 +47,27 @@ export default function IngestDocumentModal({ open, onClose, onIngested }: Props
       return
     }
     setLoading(true)
-    ingestDocument(title.trim(), content.trim(), 'User upload')
-    setLoading(false)
-    setTitle('')
-    setContent('')
-    onIngested()
-    onClose()
+    try {
+      if (isApiEnabled() && getAccessToken() && selectedFile) {
+        const uploaded = await uploadDocumentToApi(selectedFile)
+        if (uploaded?.extracted_text) {
+          ingestDocument(title.trim(), uploaded.extracted_text || content.trim(), 'API upload')
+        } else if (uploaded) {
+          ingestDocument(title.trim(), content.trim(), 'API upload')
+        } else {
+          ingestDocument(title.trim(), content.trim(), 'User upload')
+        }
+      } else {
+        ingestDocument(title.trim(), content.trim(), 'User upload')
+      }
+    } finally {
+      setLoading(false)
+      setTitle('')
+      setContent('')
+      setSelectedFile(null)
+      onIngested()
+      onClose()
+    }
   }
 
   return (
@@ -80,7 +105,7 @@ export default function IngestDocumentModal({ open, onClose, onIngested }: Props
                 placeholder="Collez le contenu ou importez un fichier .txt, .md, .csv, .json"
                 className="mt-3 h-32 w-full resize-none rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 text-xs outline-none focus:border-[var(--primary)]"
               />
-              <input ref={fileRef} type="file" accept=".txt,.md,.csv,.json,.log" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f) }} />
+              <input ref={fileRef} type="file" accept=".txt,.md,.csv,.json,.log,.pdf,.docx,.pptx,.xlsx,.png,.jpg,.jpeg" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f) }} />
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}

@@ -1,4 +1,5 @@
 import { BRAND } from '@/lib/brand'
+import { loginWithApi, registerWithApi } from '@/services/authApi'
 import type { AuthSession, LoginCredentials, RegisterPayload, UserProfile } from './types'
 import {
   clearSessionCookie,
@@ -54,6 +55,11 @@ export function getSession(): AuthSession | null {
 }
 
 export async function login(credentials: LoginCredentials): Promise<AuthSession> {
+  const apiSession = await loginWithApi(credentials)
+  if (apiSession) {
+    saveSession(apiSession, credentials.remember)
+    return apiSession
+  }
   await delay(600)
   const email = credentials.email.trim().toLowerCase()
   if (!email || credentials.password.length < 4) throw new Error('invalid_credentials')
@@ -69,8 +75,13 @@ export async function login(credentials: LoginCredentials): Promise<AuthSession>
 }
 
 export async function register(payload: RegisterPayload): Promise<AuthSession> {
-  await delay(800)
   if (payload.password.length < 6) throw new Error('weak_password')
+  const apiSession = await registerWithApi(payload)
+  if (apiSession) {
+    saveSession(apiSession, true)
+    return apiSession
+  }
+  await delay(800)
   const user: UserProfile = {
     id: `u-${Date.now()}`,
     email: payload.email.trim().toLowerCase(),

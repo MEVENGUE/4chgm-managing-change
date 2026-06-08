@@ -17,8 +17,11 @@ export type UserProfile = {
 
 export type AuthSession = {
   token: string
+  refreshToken?: string
   user: UserProfile
   expiresAt: string
+  workspaceId?: string
+  organizationId?: string
 }
 
 export type LoginCredentials = { email: string; password: string; remember?: boolean }

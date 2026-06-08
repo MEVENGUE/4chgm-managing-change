@@ -1,5 +1,46 @@
+# API
 fastapi==0.115.5
 uvicorn[standard]==0.32.1
 pydantic==2.10.3
+pydantic-settings==2.6.1
 python-dotenv==1.0.1
+python-multipart==0.0.17
+
+# Database
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.10
+alembic==1.14.0
+pgvector==0.3.6
+
+# Auth
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+email-validator==2.2.0
+
+# AI
 openai==1.57.4
+
+# Storage (Cloudflare R2 / S3)
+boto3==1.35.76
+
+# Document parsing (Phase 2)
+pymupdf==1.25.1
+python-docx==1.1.2
+python-pptx==1.0.2
+pandas==2.2.3
+openpyxl==3.1.5
+Pillow==11.0.0
+pytesseract==0.3.13
+
+# Background jobs
+celery==5.4.0
+redis==5.2.1
+
+# HTTP clients (connectors)
+httpx==0.28.1
+
+# Exports
+reportlab==4.2.5
+
+# Observability
+structlog==24.4.0

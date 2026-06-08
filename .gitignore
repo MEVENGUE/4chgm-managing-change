@@ -10,6 +10,9 @@
 # production
 /build
 
+# backend local storage (when R2 not configured)
+/backend/storage/
+
 # env files
 .env
 .env*.local

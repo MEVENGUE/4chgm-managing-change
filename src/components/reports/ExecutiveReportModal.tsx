@@ -6,6 +6,7 @@ import { FileText, Download, Loader2, X, Sparkles } from 'lucide-react'
 import { useIntelligence } from '@/providers/IntelligenceProvider'
 import { useOrganization } from '@/providers/OrganizationProvider'
 import { generateExecutiveReport, downloadReport } from '@/lib/reports'
+import { downloadExecutivePdfFromApi } from '@/services/exportsApi'
 
 type Props = { open: boolean; onClose: () => void }
 
@@ -17,8 +18,19 @@ export default function ExecutiveReportModal({ open, onClose }: Props) {
   const orgName = organization.onboarded ? organization.name : '4CHGM Enterprise'
   const report = generateExecutiveReport(intel, orgName)
 
-  function handleDownload() {
+  async function handleDownload() {
     setLoading(true)
+    const blob = await downloadExecutivePdfFromApi()
+    if (blob) {
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = '4chgm-executive-report.pdf'
+      a.click()
+      URL.revokeObjectURL(url)
+      setLoading(false)
+      return
+    }
     setTimeout(() => {
       downloadReport(report)
       setLoading(false)
