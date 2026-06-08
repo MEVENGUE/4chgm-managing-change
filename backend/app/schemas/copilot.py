@@ -5,11 +5,18 @@ from pydantic import BaseModel
 from app.services.ai_copilot import EngineContext
 
 
+class ChatAttachmentPayload(BaseModel):
+    title: str
+    content: str
+    fileName: Optional[str] = None
+
+
 class CopilotChatRequest(BaseModel):
     prompt: str
     threadId: Optional[str] = None
     context: Optional[EngineContext] = None
     consentAccepted: bool = True
+    attachments: List[ChatAttachmentPayload] = []
 
 
 class DocumentChatRequest(BaseModel):

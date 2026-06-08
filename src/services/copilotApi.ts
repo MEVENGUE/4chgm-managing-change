@@ -1,5 +1,5 @@
 import type { EngineContext } from '@/services/ai'
-import type { AiAction, KnowledgeRef } from '@/types/copilot'
+import type { AiAction, ChatAttachment, KnowledgeRef } from '@/types/copilot'
 import { isApiEnabled } from '@/lib/apiClient'
 import { getAccessToken } from '@/services/auth/tokenService'
 
@@ -16,6 +16,14 @@ function contextPayload(ctx: EngineContext) {
   }
 }
 
+function attachmentsPayload(attachments: ChatAttachment[] = []) {
+  return attachments.map((a) => ({
+    title: a.title,
+    content: a.text.slice(0, 50000),
+    fileName: a.fileName,
+  }))
+}
+
 export type CopilotApiResult = {
   content: string
   threadId: string
@@ -29,7 +37,8 @@ export type CopilotApiResult = {
 export async function chatRagWithApi(
   prompt: string,
   ctx: EngineContext = {},
-  threadId?: string
+  threadId?: string,
+  attachments: ChatAttachment[] = []
 ): Promise<CopilotApiResult | null> {
   if (!isApiEnabled() || !getAccessToken()) return null
   try {
@@ -39,7 +48,13 @@ export async function chatRagWithApi(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${getAccessToken()}`,
       },
-      body: JSON.stringify({ prompt, threadId, context: contextPayload(ctx), consentAccepted: true }),
+      body: JSON.stringify({
+        prompt,
+        threadId,
+        context: contextPayload(ctx),
+        consentAccepted: true,
+        attachments: attachmentsPayload(attachments),
+      }),
     })
     if (!res.ok) return null
     return (await res.json()) as CopilotApiResult
@@ -51,8 +66,12 @@ export async function chatRagWithApi(
 export async function* streamRagWithApi(
   prompt: string,
   ctx: EngineContext = {},
-  threadId?: string
-): AsyncGenerator<{ type: 'token'; content: string } | { type: 'done'; threadId: string; citations: KnowledgeRef[]; messageId: string }> {
+  threadId?: string,
+  attachments: ChatAttachment[] = []
+): AsyncGenerator<
+  | { type: 'token'; content: string }
+  | { type: 'done'; threadId: string; citations: KnowledgeRef[]; messageId: string }
+> {
   if (!isApiEnabled() || !getAccessToken()) return
   const res = await fetch(`${BASE()}/api/v1/copilot/chat/stream`, {
     method: 'POST',
@@ -60,7 +79,13 @@ export async function* streamRagWithApi(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${getAccessToken()}`,
     },
-    body: JSON.stringify({ prompt, threadId, context: contextPayload(ctx), consentAccepted: true }),
+    body: JSON.stringify({
+      prompt,
+      threadId,
+      context: contextPayload(ctx),
+      consentAccepted: true,
+      attachments: attachmentsPayload(attachments),
+    }),
   })
   if (!res.ok || !res.body) return
   const reader = res.body.getReader()

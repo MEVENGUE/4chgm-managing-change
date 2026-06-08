@@ -187,6 +187,38 @@ export function generateAnswer(prompt: string, ctx: EngineContext = {}): EngineR
   }
 }
 
+/** Answer using attached documents + prompt (chatbot-style follow-ups). */
+export function generateAnswerWithAttachments(
+  prompt: string,
+  attachments: { title: string; text: string }[],
+  ctx: EngineContext = {}
+): EngineResult {
+  const combined = attachments.map((a) => a.text).join('\n\n')
+  const query = prompt.trim() || 'Analyse ce document et résume les points clés.'
+  const docSummary = summarizeDocument(combined)
+  const citations = retrieve(query + ' ' + combined.slice(0, 500))
+  const who = ctx.orgName ?? 'your organization'
+
+  if (!prompt.trim()) {
+    return {
+      content: `J'ai analysé ${attachments.length} document(s) pour ${who}.\n\n${docSummary}`,
+      citations,
+      contextUsed: ['Document upload', ...attachments.map((a) => a.title), ...citations.map((c) => c.title)],
+      actions: [
+        { id: 'a1', label: 'Extraire les risques', kind: 'generate', payload: 'Quels sont les risques identifiés dans le document ?' },
+        { id: 'a2', label: 'Plan d\'action', kind: 'generate', payload: 'Propose un plan d\'action basé sur le document' },
+      ],
+    }
+  }
+
+  const base = generateAnswer(query, ctx)
+  return {
+    ...base,
+    content: `En me basant sur ${attachments.map((a) => `"${a.title}"`).join(', ')}, ${base.content.charAt(0).toLowerCase()}${base.content.slice(1)}`,
+    contextUsed: [...attachments.map((a) => a.title), ...base.contextUsed],
+  }
+}
+
 export function answerForDocument(text: string, ctx: EngineContext = {}): EngineResult {
   const summary = summarizeDocument(text)
   const citations = retrieve(text)

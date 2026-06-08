@@ -6,20 +6,21 @@ import { useProjects } from '@/providers/ProjectsProvider'
 import { forecastPortfolio } from '@/lib/insights'
 import {
   generateAnswer,
-  answerForDocument,
+  generateAnswerWithAttachments,
   streamAnswerText,
   type EngineContext,
   type EngineResult,
 } from '@/services/ai'
-import { chatWithApi, analyzeDocumentWithApi } from '@/services/aiApi'
-import { analyzeDocumentRagWithApi, chatRagWithApi, streamRagWithApi } from '@/services/copilotApi'
+import { chatWithApi } from '@/services/aiApi'
+import { streamRagWithApi } from '@/services/copilotApi'
 import { getAccessToken } from '@/services/auth/tokenService'
 import { isApiEnabled } from '@/lib/apiClient'
 import { hasDataConsent } from '@/lib/dataPolicy'
 import { retrieve } from '@/services/knowledge'
-import type { AiThread, AiMessage } from '@/types/copilot'
+import type { AiThread, AiMessage, ChatAttachment } from '@/types/copilot'
 
 const STORAGE_KEY = '4chgm-copilot'
+const MAX_ATTACHMENTS = 3
 
 function welcomeThread(): AiThread {
   const now = new Date().toISOString()
@@ -33,10 +34,11 @@ function welcomeThread(): AiThread {
         id: 'm-welcome',
         role: 'assistant',
         content:
-          'Hello — I am your 4CHGM copilot. I have indexed your organization profile and enterprise knowledge base. Ask me to optimize cost, explain risks, summarize a sprint, or generate a transformation roadmap.',
+          'Bonjour — je suis votre copilot 4CHGM. Importez un document (📎), posez vos questions en continu : résumé, risques, plan d\'action… Le document reste actif dans la conversation.',
         timestamp: now,
       },
     ],
+    attachments: [],
   }
 }
 
@@ -45,10 +47,14 @@ type CopilotContextValue = {
   threads: AiThread[]
   activeThreadId: string
   activeThread: AiThread
+  attachments: ChatAttachment[]
   streaming: boolean
   newThread: () => void
   selectThread: (id: string) => void
   deleteThread: (id: string) => void
+  attachDocument: (att: Omit<ChatAttachment, 'id' | 'uploadedAt'>) => void
+  removeAttachment: (id: string) => void
+  clearAttachments: () => void
   sendMessage: (text: string) => Promise<void>
   sendDocument: (title: string, text: string) => Promise<void>
 }
@@ -72,6 +78,7 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
     } catch {
       /* ignore */
     }
+    loaded = loaded.map((t) => ({ ...t, attachments: t.attachments ?? [] }))
     if (loaded.length === 0) loaded = [welcomeThread()]
     setThreads(loaded)
     setActiveThreadId(loaded[0].id)
@@ -100,6 +107,13 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
     }
   }, [organization, activeWorkspace, initiatives])
 
+  const activeThread = useMemo(
+    () => threads.find((t) => t.id === activeThreadId) ?? threads[0] ?? welcomeThread(),
+    [threads, activeThreadId]
+  )
+
+  const attachments = activeThread.attachments ?? []
+
   const updateThread = useCallback(
     (threadId: string, updater: (t: AiThread) => AiThread, save = false) => {
       setThreads((prev) => {
@@ -111,8 +125,39 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
     [persist]
   )
 
+  const attachDocument = useCallback(
+    (att: Omit<ChatAttachment, 'id' | 'uploadedAt'>) => {
+      if (!hasDataConsent()) return
+      const item: ChatAttachment = {
+        ...att,
+        id: `att-${Date.now()}`,
+        uploadedAt: new Date().toISOString(),
+      }
+      updateThread(
+        activeThreadId,
+        (t) => ({
+          ...t,
+          attachments: [...(t.attachments ?? []).filter((a) => a.fileName !== item.fileName), item].slice(-MAX_ATTACHMENTS),
+        }),
+        true
+      )
+    },
+    [activeThreadId, updateThread]
+  )
+
+  const removeAttachment = useCallback(
+    (id: string) => {
+      updateThread(activeThreadId, (t) => ({ ...t, attachments: (t.attachments ?? []).filter((a) => a.id !== id) }), true)
+    },
+    [activeThreadId, updateThread]
+  )
+
+  const clearAttachments = useCallback(() => {
+    updateThread(activeThreadId, (t) => ({ ...t, attachments: [] }), true)
+  }, [activeThreadId, updateThread])
+
   const runStreamFromApi = useCallback(
-    async (threadId: string, userMsg: AiMessage, prompt: string) => {
+    async (threadId: string, userMsg: AiMessage, prompt: string, threadAttachments: ChatAttachment[]) => {
       updateThread(threadId, (t) => ({
         ...t,
         title: t.messages.filter((m) => m.role === 'user').length === 0 ? userMsg.content.slice(0, 40) : t.title,
@@ -122,18 +167,19 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
       setStreaming(true)
       const assistantId = `a-${Date.now()}`
       let full = ''
-      let citations = retrieve(prompt)
+      let citations = retrieve(prompt + threadAttachments.map((a) => a.text).join(' ').slice(0, 300))
       let doneMeta: { threadId?: string; citations?: typeof citations } = {}
-      for await (const event of streamRagWithApi(prompt, ctx, threadId)) {
+      for await (const event of streamRagWithApi(prompt, ctx, threadId, threadAttachments)) {
         if (event.type === 'token') {
           full += event.content
           if (full.trim()) {
             updateThread(threadId, (t) => {
               const exists = t.messages.some((m) => m.id === assistantId)
-              const msg = { id: assistantId, role: 'assistant' as const, content: full, timestamp: new Date().toISOString() }
               return {
                 ...t,
-                messages: exists ? t.messages.map((m) => (m.id === assistantId ? { ...m, content: full } : m)) : [...t.messages, msg],
+                messages: exists
+                  ? t.messages.map((m) => (m.id === assistantId ? { ...m, content: full } : m))
+                  : [...t.messages, { id: assistantId, role: 'assistant' as const, content: full, timestamp: new Date().toISOString() }],
               }
             })
           }
@@ -142,7 +188,9 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
           doneMeta = event
         }
       }
-      const mock = generateAnswer(prompt, ctx)
+      const mock = threadAttachments.length
+        ? generateAnswerWithAttachments(prompt, threadAttachments, ctx)
+        : generateAnswer(prompt, ctx)
       updateThread(
         threadId,
         (t) => ({
@@ -155,7 +203,12 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
                   citations,
                   actions: mock.actions,
                   artifact: mock.artifact,
-                  contextUsed: ['RAG stream', 'OpenAI', ...citations.map((c) => c.title)],
+                  contextUsed: [
+                    'RAG stream',
+                    'OpenAI',
+                    ...threadAttachments.map((a) => a.title),
+                    ...citations.map((c) => c.title),
+                  ],
                 }
               : m
           ),
@@ -169,15 +222,13 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
   )
 
   const runStream = useCallback(
-    async (threadId: string, userMsg: AiMessage, result: ReturnType<typeof generateAnswer>) => {
-      // Set thread title from first user message
+    async (threadId: string, userMsg: AiMessage, result: EngineResult) => {
       updateThread(threadId, (t) => ({
         ...t,
         title: t.messages.filter((m) => m.role === 'user').length === 0 ? userMsg.content.slice(0, 40) : t.title,
         updatedAt: new Date().toISOString(),
         messages: [...t.messages, userMsg],
       }))
-
       setStreaming(true)
       const assistantId = `a-${Date.now()}`
       let appended = false
@@ -214,45 +265,16 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
   )
 
   const resolveAnswer = useCallback(
-    async (prompt: string, docMode: { title: string; text: string } | null): Promise<EngineResult | null> => {
-      if (docMode) {
-        const rag = await analyzeDocumentRagWithApi(docMode.title, docMode.text, ctx, activeThreadId)
-        if (rag?.content) {
-          return {
-            content: rag.content,
-            citations: rag.citations,
-            contextUsed: rag.contextUsed,
-            actions: rag.actions,
-          }
-        }
-        const api = await analyzeDocumentWithApi(docMode.title, docMode.text, ctx, hasDataConsent())
-        if (api?.content) {
-          const citations = retrieve(docMode.text)
-          return {
-            content: api.content + (api.mock ? '\n\n_(Mode mock — vérifiez OPENAI_API_KEY sur Railway)_' : ''),
-            citations,
-            contextUsed: ['Document upload', 'OpenAI analysis', ...citations.map((c) => c.title)],
-            actions: [{ id: 'a1', label: 'Open Knowledge Center', kind: 'navigate', payload: '/dashboard/knowledge' }],
-          }
-        }
-        return answerForDocument(docMode.text, ctx)
-      }
-      if (isApiEnabled() && getAccessToken()) return null
-      const rag = await chatRagWithApi(prompt, ctx, activeThreadId)
-      if (rag?.content) {
-        return {
-          content: rag.content,
-          citations: rag.citations,
-          contextUsed: rag.contextUsed,
-          actions: rag.actions,
-        }
+    async (prompt: string, threadAttachments: ChatAttachment[]): Promise<EngineResult> => {
+      if (threadAttachments.length > 0) {
+        return generateAnswerWithAttachments(prompt, threadAttachments, ctx)
       }
       const api = await chatWithApi(prompt, ctx)
       if (api?.content) {
         const citations = retrieve(prompt)
         const mock = generateAnswer(prompt, ctx)
         return {
-          content: api.content + (api.mock ? '\n\n_(Réponse mock — OPENAI_API_KEY non configurée)_' : ''),
+          content: api.content + (api.mock ? '\n\n_(Mode mock — OPENAI_API_KEY)_' : ''),
           citations,
           contextUsed: ['OpenAI', 'Organization profile', ...citations.map((c) => c.title)],
           actions: mock.actions,
@@ -261,22 +283,34 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
       }
       return generateAnswer(prompt, ctx)
     },
-    [ctx, activeThreadId]
+    [ctx]
   )
 
   const sendMessage = useCallback(
     async (text: string) => {
       const value = text.trim()
-      if (!value || streaming || !activeThreadId) return
-      const userMsg: AiMessage = { id: `u-${Date.now()}`, role: 'user', content: value, timestamp: new Date().toISOString() }
+      const threadAttachments = attachments
+      if ((!value && threadAttachments.length === 0) || streaming || !activeThreadId) return
+
+      const displayContent = value || `Analyse le(s) document(s) joint(s) : ${threadAttachments.map((a) => a.title).join(', ')}`
+      const prompt = value || 'Analyse les documents joints. Résume les points clés, les risques et propose des actions.'
+
+      const userMsg: AiMessage = {
+        id: `u-${Date.now()}`,
+        role: 'user',
+        content: displayContent,
+        timestamp: new Date().toISOString(),
+        attachments: threadAttachments.length ? [...threadAttachments] : undefined,
+      }
+
       if (isApiEnabled() && getAccessToken()) {
-        await runStreamFromApi(activeThreadId, userMsg, value)
+        await runStreamFromApi(activeThreadId, userMsg, prompt, threadAttachments)
         return
       }
-      const result = await resolveAnswer(value, null)
-      if (result) await runStream(activeThreadId, userMsg, result)
+      const result = await resolveAnswer(prompt, threadAttachments)
+      await runStream(activeThreadId, userMsg, result)
     },
-    [streaming, activeThreadId, resolveAnswer, runStream, runStreamFromApi]
+    [streaming, activeThreadId, attachments, resolveAnswer, runStream, runStreamFromApi]
   )
 
   const sendDocument = useCallback(
@@ -284,16 +318,15 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
       const value = docText.trim()
       if (!value || streaming || !activeThreadId) return
       if (!hasDataConsent()) return
-      const userMsg: AiMessage = {
-        id: `u-${Date.now()}`,
-        role: 'user',
-        content: `📎 Document: ${title || 'Untitled'} (${value.split(/\s+/).length} words)`,
-        timestamp: new Date().toISOString(),
-      }
-      const result = await resolveAnswer('', { title: title || 'Untitled', text: value })
-      if (result) await runStream(activeThreadId, userMsg, result)
+      attachDocument({
+        title: title || 'Document',
+        fileName: title || 'document.txt',
+        text: value,
+        wordCount: value.split(/\s+/).length,
+      })
+      await sendMessage('Résume ce document et identifie les risques et actions prioritaires.')
     },
-    [streaming, activeThreadId, resolveAnswer, runStream]
+    [streaming, activeThreadId, attachDocument, sendMessage]
   )
 
   const newThread = useCallback(() => {
@@ -321,14 +354,39 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
     [persist]
   )
 
-  const activeThread = useMemo(
-    () => threads.find((t) => t.id === activeThreadId) ?? threads[0] ?? welcomeThread(),
-    [threads, activeThreadId]
-  )
-
   const value = useMemo(
-    () => ({ ready, threads, activeThreadId, activeThread, streaming, newThread, selectThread, deleteThread, sendMessage, sendDocument }),
-    [ready, threads, activeThreadId, activeThread, streaming, newThread, selectThread, deleteThread, sendMessage, sendDocument]
+    () => ({
+      ready,
+      threads,
+      activeThreadId,
+      activeThread,
+      attachments,
+      streaming,
+      newThread,
+      selectThread,
+      deleteThread,
+      attachDocument,
+      removeAttachment,
+      clearAttachments,
+      sendMessage,
+      sendDocument,
+    }),
+    [
+      ready,
+      threads,
+      activeThreadId,
+      activeThread,
+      attachments,
+      streaming,
+      newThread,
+      selectThread,
+      deleteThread,
+      attachDocument,
+      removeAttachment,
+      clearAttachments,
+      sendMessage,
+      sendDocument,
+    ]
   )
 
   return <CopilotContext.Provider value={value}>{children}</CopilotContext.Provider>

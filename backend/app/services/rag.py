@@ -29,22 +29,36 @@ def detect_intent(query: str) -> str:
     return "general"
 
 
+def _attachments_block(attachments: list[dict] | None, document_text: Optional[str] = None) -> str:
+    parts: list[str] = []
+    if attachments:
+        for i, att in enumerate(attachments, 1):
+            title = att.get("title") or att.get("fileName") or f"Document {i}"
+            content = (att.get("content") or "")[:12000]
+            parts.append(f"--- Document {i}: {title} ---\n{content}")
+    if document_text:
+        parts.append(f"--- Document ---\n{document_text[:12000]}")
+    return "\n\n".join(parts)
+
+
 def assemble_messages(
     query: str,
     hits: list[RetrievalHit],
     ctx: Optional[EngineContext] = None,
     document_text: Optional[str] = None,
+    attachments: list[dict] | None = None,
 ) -> list[dict]:
     intent = detect_intent(query)
     knowledge = build_context_block(hits)
+    doc_block = _attachments_block(attachments, document_text)
     sys = (
         f"{system_prompt(ctx)}\n"
-        f"Detected intent: {intent}. Use retrieved knowledge and portfolio context. "
-        "Cite sources by number [1], [2]. Be actionable."
+        f"Detected intent: {intent}. Use retrieved knowledge, uploaded documents, and portfolio context. "
+        "Answer follow-up questions about attached documents. Cite sources by number [1], [2]. Be actionable."
     )
     user_parts = [f"Retrieved knowledge:\n{knowledge}"]
-    if document_text:
-        user_parts.append(f"Uploaded document excerpt:\n{document_text[:12000]}")
+    if doc_block:
+        user_parts.append(f"User-attached documents (use as primary source when relevant):\n{doc_block}")
     user_parts.append(f"User question: {query}")
     return [
         {"role": "system", "content": sys},
@@ -80,8 +94,10 @@ def rag_answer(
     query: str,
     ctx: Optional[EngineContext] = None,
     document_text: Optional[str] = None,
+    attachments: list[dict] | None = None,
 ) -> dict:
-    hits = hybrid_retrieve(db, workspace_id, query or document_text or "transformation", top_k=8)
+    attach_text = " ".join((a.get("content") or "")[:500] for a in (attachments or []))
+    hits = hybrid_retrieve(db, workspace_id, query or attach_text or document_text or "transformation", top_k=8)
     intent = detect_intent(query or "document analysis")
     if not settings.openai_enabled:
         content = mock_answer(query or "document")
@@ -94,13 +110,14 @@ def rag_answer(
             "contextUsed": ["mock mode", *[h.title for h in hits[:3]]],
             "mock": True,
         }
-    messages = assemble_messages(query, hits, ctx, document_text)
+    messages = assemble_messages(query, hits, ctx, document_text, attachments)
     content = openai_chat(messages)
+    doc_titles = [a.get("title", "Document") for a in (attachments or [])]
     return {
         "content": content,
         "citations": citations_from_hits(hits),
         "actions": suggested_actions(intent),
-        "contextUsed": ["RAG retrieval", "OpenAI", *[h.title for h in hits[:4]]],
+        "contextUsed": ["RAG retrieval", "OpenAI", *doc_titles, *[h.title for h in hits[:4]]],
         "mock": False,
         "model": settings.openai_model,
     }
@@ -111,9 +128,11 @@ def rag_stream(
     workspace_id: str,
     query: str,
     ctx: Optional[EngineContext] = None,
+    attachments: list[dict] | None = None,
 ) -> Iterator[str]:
     """Stream tokens via OpenAI streaming API."""
-    hits = hybrid_retrieve(db, workspace_id, query, top_k=8)
+    attach_text = " ".join((a.get("content") or "")[:500] for a in (attachments or []))
+    hits = hybrid_retrieve(db, workspace_id, query or attach_text, top_k=8)
     if not settings.openai_enabled:
         text = mock_answer(query)
         for word in text.split(" "):
@@ -122,7 +141,7 @@ def rag_stream(
     from openai import OpenAI
 
     client = OpenAI(api_key=settings.openai_api_key)
-    messages = assemble_messages(query, hits, ctx)
+    messages = assemble_messages(query, hits, ctx, attachments=attachments)
     stream = client.chat.completions.create(
         model=settings.openai_model,
         messages=messages,

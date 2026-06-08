@@ -101,7 +101,8 @@ def list_threads(user: User = Depends(get_current_user), db: Session = Depends(g
 def copilot_chat(req: CopilotChatRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     _, ws = get_user_org_workspace(db, user)
     thread = _get_or_create_thread(db, user, ws.id, req.threadId, req.prompt)
-    result = rag_answer(db, ws.id, req.prompt, req.context)
+    attach_payload = [{"title": a.title, "content": a.content, "fileName": a.fileName} for a in req.attachments]
+    result = rag_answer(db, ws.id, req.prompt, req.context, attachments=attach_payload or None)
     _, msg_id = _save_messages(db, thread, req.prompt, result)
     intent = detect_intent(req.prompt)
     return CopilotChatResponse(
@@ -149,12 +150,13 @@ def copilot_stream(req: CopilotChatRequest, user: User = Depends(get_current_use
     citations = citations_from_hits(hits)
 
     thread_id = thread.id
+    attach_payload = [{"title": a.title, "content": a.content, "fileName": a.fileName} for a in req.attachments]
 
     def event_generator():
         from app.database import SessionLocal
 
         full = ""
-        for token in rag_stream(db, ws.id, req.prompt, req.context):
+        for token in rag_stream(db, ws.id, req.prompt, req.context, attachments=attach_payload or None):
             full += token
             yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
         local_db = SessionLocal()

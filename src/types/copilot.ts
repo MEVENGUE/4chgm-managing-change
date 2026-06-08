@@ -36,6 +36,16 @@ export type RiskArtifact = {
 
 export type Artifact = RoadmapArtifact | SprintArtifact | RiskArtifact
 
+export type ChatAttachment = {
+  id: string
+  title: string
+  fileName: string
+  text: string
+  wordCount: number
+  fileType?: string
+  uploadedAt: string
+}
+
 export type AiMessage = {
   id: string
   role: 'user' | 'assistant'
@@ -45,6 +55,8 @@ export type AiMessage = {
   actions?: AiAction[]
   artifact?: Artifact
   contextUsed?: string[]
+  /** Documents envoyés avec ce message */
+  attachments?: ChatAttachment[]
 }
 
 export type AiThread = {
@@ -53,4 +65,6 @@ export type AiThread = {
   createdAt: string
   updatedAt: string
   messages: AiMessage[]
+  /** Documents actifs dans la conversation — disponibles pour les questions suivantes */
+  attachments?: ChatAttachment[]
 }
