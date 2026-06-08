@@ -1,7 +1,13 @@
-import type { Initiative } from '@/types/projects'
+import type { Initiative, InitiativeStatus } from '@/types/projects'
 import { healthScore, budgetUtilization, formatCurrency } from '@/types/projects'
-import type { DashboardData } from '@/types/dashboard'
+import type { DashboardData, Initiative as DashboardInitiative } from '@/types/dashboard'
 import type { KnowledgeSource } from '@/services/knowledge'
+
+function toDashboardStatus(status: InitiativeStatus): DashboardInitiative['status'] {
+  if (status === 'at-risk' || status === 'on-hold') return 'at-risk'
+  if (status === 'completed') return 'completed'
+  return 'on-track'
+}
 
 /** Build live dashboard metrics from user portfolio + knowledge base. */
 export function buildDashboardFromPortfolio(
@@ -85,7 +91,7 @@ export function buildDashboardFromPortfolio(
       id: i.id,
       name: i.name,
       progress: i.progress,
-      status: i.status,
+      status: toDashboardStatus(i.status),
     })),
     collaboration: knowledgeSources.slice(0, 4).map((s, idx) => ({
       id: String(idx),
