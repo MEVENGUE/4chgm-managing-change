@@ -1,5 +1,5 @@
 import { apiPost, isApiEnabled } from '@/lib/apiClient'
-import type { AuthSession, LoginCredentials, RegisterPayload } from './types'
+import type { AuthSession, LoginCredentials, RegisterPayload } from '@/services/auth/types'
 
 type ApiAuthResponse = {
   token: string

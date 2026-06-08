@@ -37,7 +37,7 @@ export default function IngestDocumentModal({ open, onClose, onIngested }: Props
     }
   }
 
-  function submit() {
+  async function submit() {
     if (!hasDataConsent()) {
       setError('Acceptez la politique de traitement des données IA avant d\'ingérer.')
       return
