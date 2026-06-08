@@ -131,6 +131,18 @@ DASHBOARD = DashboardData(
 
 
 # ───────────────────────── Routes ─────────────────────────
+@app.get("/")
+def root():
+    return {
+        "service": "4CHGM API",
+        "version": "0.1.0",
+        "status": "ok",
+        "docs": "/docs",
+        "health": "/health",
+        "hint": "This is the backend API. Deploy the Next.js frontend on Vercel.",
+    }
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
