@@ -69,13 +69,52 @@ class DashboardData(BaseModel):
     healthScore: float
 
 
+class PortfolioContext(BaseModel):
+    total: Optional[int] = None
+    atRisk: Optional[int] = None
+    avgHealth: Optional[int] = None
+    overrunPct: Optional[int] = None
+
+
+class EngineContext(BaseModel):
+    orgName: Optional[str] = None
+    industry: Optional[str] = None
+    goals: Optional[List[str]] = None
+    workspace: Optional[str] = None
+    role: Optional[str] = None
+    portfolio: Optional[PortfolioContext] = None
+
+
 class ChatRequest(BaseModel):
     prompt: str
+    context: Optional[EngineContext] = None
+    consentAccepted: bool = False
+
+
+class DocumentRequest(BaseModel):
+    title: str
+    content: str
+    context: Optional[EngineContext] = None
+    consentAccepted: bool = False
+
+
+class MermaidRequest(BaseModel):
+    prompt: str
+    context: Optional[str] = None
+    consentAccepted: bool = False
 
 
 class ChatResponse(BaseModel):
     role: Literal["assistant"] = "assistant"
     content: str
+    model: Optional[str] = None
+    mock: bool = False
+
+
+class MermaidResponse(BaseModel):
+    code: str
+    note: str
+    mock: bool = False
 
 
 # ───────────────────────── Mock data ─────────────────────────
@@ -158,25 +197,128 @@ def get_health_score():
     return DASHBOARD.healthScore
 
 
+def _system_prompt(ctx: Optional[EngineContext] = None) -> str:
+    base = (
+        "You are 4CHGM, an enterprise transformation copilot. Be concise, strategic and actionable. "
+        "Responses must be grounded in the user's organizational context when provided. "
+        "Never invent confidential data; state assumptions clearly."
+    )
+    if not ctx:
+        return base
+    parts = [base]
+    if ctx.orgName:
+        parts.append(f"Organization: {ctx.orgName}.")
+    if ctx.workspace:
+        parts.append(f"Workspace: {ctx.workspace} ({ctx.role or 'user'}).")
+    if ctx.portfolio:
+        p = ctx.portfolio
+        parts.append(
+            f"Portfolio: {p.total or 0} initiatives, {p.atRisk or 0} at risk, "
+            f"health {p.avgHealth or 0}, budget forecast {p.overrunPct or 0}%."
+        )
+    if ctx.goals:
+        parts.append(f"Goals: {', '.join(ctx.goals)}.")
+    return " ".join(parts)
+
+
+def _openai_chat(messages: list, model: str) -> str:
+    from openai import OpenAI
+
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    completion = client.chat.completions.create(model=model, messages=messages)
+    return completion.choices[0].message.content or ""
+
+
+def _extract_mermaid(text: str) -> str:
+    if "```mermaid" in text:
+        return text.split("```mermaid", 1)[1].split("```", 1)[0].strip()
+    if "```" in text:
+        return text.split("```", 1)[1].split("```", 1)[0].strip()
+    return text.strip()
+
+
 @app.post("/api/ai/chat", response_model=ChatResponse)
 def ai_chat(req: ChatRequest):
     api_key = os.getenv("OPENAI_API_KEY")
+    model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     if not api_key:
-        return ChatResponse(content=_mock_answer(req.prompt))
+        return ChatResponse(content=_mock_answer(req.prompt), mock=True)
     try:
-        from openai import OpenAI
-
-        client = OpenAI(api_key=api_key)
-        completion = client.chat.completions.create(
-            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-            messages=[
-                {"role": "system", "content": "You are 4CHGM, an enterprise transformation copilot. Be concise, strategic and actionable."},
+        content = _openai_chat(
+            [
+                {"role": "system", "content": _system_prompt(req.context)},
                 {"role": "user", "content": req.prompt},
             ],
+            model,
         )
-        return ChatResponse(content=completion.choices[0].message.content or "")
+        return ChatResponse(content=content, model=model)
     except Exception:
-        return ChatResponse(content=_mock_answer(req.prompt))
+        return ChatResponse(content=_mock_answer(req.prompt), mock=True)
+
+
+@app.post("/api/ai/analyze-document", response_model=ChatResponse)
+def analyze_document(req: DocumentRequest):
+    if not req.consentAccepted:
+        return ChatResponse(
+            content="Document analysis requires user consent under the 4CHGM data processing policy.",
+            mock=True,
+        )
+    api_key = os.getenv("OPENAI_API_KEY")
+    model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    text = req.content[:50000]
+    if not api_key:
+        return ChatResponse(
+            content=f"Summary of «{req.title}» (mock): document contains {len(text.split())} words. Key themes detected from user content.",
+            mock=True,
+        )
+    try:
+        content = _openai_chat(
+            [
+                {"role": "system", "content": _system_prompt(req.context) + " Analyze documents: summary, risks, action items."},
+                {
+                    "role": "user",
+                    "content": f"Analyze this document titled «{req.title}»:\n\n{text}",
+                },
+            ],
+            model,
+        )
+        return ChatResponse(content=content, model=model)
+    except Exception:
+        return ChatResponse(content=f"Could not analyze «{req.title}». Please retry.", mock=True)
+
+
+@app.post("/api/ai/mermaid", response_model=MermaidResponse)
+def generate_mermaid(req: MermaidRequest):
+    api_key = os.getenv("OPENAI_API_KEY")
+    model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    if not api_key:
+        return MermaidResponse(
+            code="flowchart LR\n  A[User data] --> B[4CHGM AI]\n  B --> C[Diagram]",
+            note="Mock diagram — set OPENAI_API_KEY for AI generation.",
+            mock=True,
+        )
+    try:
+        raw = _openai_chat(
+            [
+                {
+                    "role": "system",
+                    "content": "Return ONLY valid Mermaid diagram code in a ```mermaid fenced block. Enterprise architecture style, no prose.",
+                },
+                {
+                    "role": "user",
+                    "content": f"Generate a Mermaid diagram: {req.prompt}\n\nContext:\n{req.context or 'none'}",
+                },
+            ],
+            model,
+        )
+        code = _extract_mermaid(raw)
+        return MermaidResponse(code=code, note="AI-generated via OpenAI — edit the source freely.")
+    except Exception:
+        return MermaidResponse(
+            code="flowchart TD\n  Error[Generation failed] --> Retry[Retry prompt]",
+            note="OpenAI request failed.",
+            mock=True,
+        )
 
 
 def _mock_answer(prompt: str) -> str:

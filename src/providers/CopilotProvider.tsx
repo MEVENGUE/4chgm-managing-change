@@ -9,7 +9,11 @@ import {
   answerForDocument,
   streamAnswerText,
   type EngineContext,
+  type EngineResult,
 } from '@/services/ai'
+import { chatWithApi, analyzeDocumentWithApi } from '@/services/aiApi'
+import { hasDataConsent } from '@/lib/dataPolicy'
+import { retrieve } from '@/services/knowledge'
 import type { AiThread, AiMessage } from '@/types/copilot'
 
 const STORAGE_KEY = '4chgm-copilot'
@@ -149,31 +153,64 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
     [updateThread]
   )
 
+  const resolveAnswer = useCallback(
+    async (prompt: string, docMode: { title: string; text: string } | null): Promise<EngineResult> => {
+      if (docMode) {
+        const api = await analyzeDocumentWithApi(docMode.title, docMode.text, ctx, hasDataConsent())
+        if (api?.content) {
+          const citations = retrieve(docMode.text)
+          return {
+            content: api.content + (api.mock ? '\n\n_(Mode mock — vérifiez OPENAI_API_KEY sur Railway)_' : ''),
+            citations,
+            contextUsed: ['Document upload', 'OpenAI analysis', ...citations.map((c) => c.title)],
+            actions: [{ id: 'a1', label: 'Open Knowledge Center', kind: 'navigate', payload: '/dashboard/knowledge' }],
+          }
+        }
+        return answerForDocument(docMode.text, ctx)
+      }
+      const api = await chatWithApi(prompt, ctx)
+      if (api?.content) {
+        const citations = retrieve(prompt)
+        const mock = generateAnswer(prompt, ctx)
+        return {
+          content: api.content + (api.mock ? '\n\n_(Réponse mock — OPENAI_API_KEY non configurée)_' : ''),
+          citations,
+          contextUsed: ['OpenAI', 'Organization profile', ...citations.map((c) => c.title)],
+          actions: mock.actions,
+          artifact: mock.artifact,
+        }
+      }
+      return generateAnswer(prompt, ctx)
+    },
+    [ctx]
+  )
+
   const sendMessage = useCallback(
     async (text: string) => {
       const value = text.trim()
       if (!value || streaming || !activeThreadId) return
       const userMsg: AiMessage = { id: `u-${Date.now()}`, role: 'user', content: value, timestamp: new Date().toISOString() }
-      const result = generateAnswer(value, ctx)
+      const result = await resolveAnswer(value, null)
       await runStream(activeThreadId, userMsg, result)
     },
-    [streaming, activeThreadId, ctx, runStream]
+    [streaming, activeThreadId, resolveAnswer, runStream]
   )
 
   const sendDocument = useCallback(
     async (title: string, docText: string) => {
       const value = docText.trim()
       if (!value || streaming || !activeThreadId) return
+      if (!hasDataConsent()) return
       const userMsg: AiMessage = {
         id: `u-${Date.now()}`,
         role: 'user',
-        content: `Analyze this document: ${title || 'Untitled'}`,
+        content: `📎 Document: ${title || 'Untitled'} (${value.split(/\s+/).length} words)`,
         timestamp: new Date().toISOString(),
       }
-      const result = answerForDocument(value, ctx)
+      const result = await resolveAnswer('', { title: title || 'Untitled', text: value })
       await runStream(activeThreadId, userMsg, result)
     },
-    [streaming, activeThreadId, ctx, runStream]
+    [streaming, activeThreadId, resolveAnswer, runStream]
   )
 
   const newThread = useCallback(() => {

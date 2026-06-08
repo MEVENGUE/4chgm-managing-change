@@ -6,6 +6,8 @@ import { useTheme } from '@/providers/ThemeProvider'
 import { useProjects } from '@/providers/ProjectsProvider'
 import { MERMAID_TEMPLATES } from '@/lib/mermaidTemplates'
 import { generateMermaid, explainMermaid, mermaidFromInitiatives, AI_PROMPT_SUGGESTIONS } from '@/lib/mermaidAI'
+import { generateMermaidWithApi } from '@/services/aiApi'
+import { isApiEnabled } from '@/lib/apiClient'
 
 let renderSeq = 0
 
@@ -71,13 +73,14 @@ export default function MermaidStudio() {
   }
 
   async function exportPng() {
-    if (!previewRef.current) return
+    if (!previewRef.current || !svg) return
     const { toPng } = await import('html-to-image')
-    const node = previewRef.current.querySelector('svg') as SVGElement | null
-    if (!node) return
-    const dataUrl = await toPng(node as unknown as HTMLElement, {
-      pixelRatio: 2,
-      backgroundColor: 'transparent',
+    const bg = theme === 'light' ? '#f8f9fc' : '#0d1117'
+    const dataUrl = await toPng(previewRef.current, {
+      pixelRatio: 3,
+      backgroundColor: bg,
+      cacheBust: true,
+      style: { padding: '24px' },
     })
     triggerDownload(dataUrl, '4chgm-diagram.png')
   }
@@ -89,17 +92,25 @@ export default function MermaidStudio() {
     a.click()
   }
 
-  function runGenerate(promptText: string) {
+  async function runGenerate(promptText: string) {
     const text = promptText.trim()
     if (!text) return
     setGenerating(true)
     setExplanation(null)
-    setTimeout(() => {
-      const { code: out, note: n } = generateMermaid(text, { initiatives })
-      setCode(out)
-      setNote(n)
-      setGenerating(false)
-    }, 650)
+    const ctx = initiatives.map((i) => `${i.name} (${i.status}, ${i.progress}%)`).join('; ')
+    if (isApiEnabled()) {
+      const api = await generateMermaidWithApi(text, ctx)
+      if (api?.code) {
+        setCode(api.code)
+        setNote(api.note + (api.mock ? ' (mode mock)' : ''))
+        setGenerating(false)
+        return
+      }
+    }
+    const { code: out, note: n } = generateMermaid(text, { initiatives })
+    setCode(out)
+    setNote(n)
+    setGenerating(false)
   }
 
   function generateFromInitiatives() {

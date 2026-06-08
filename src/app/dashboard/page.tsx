@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useOrganization } from '@/providers/OrganizationProvider'
 import type { WorkspaceView } from '@/lib/workspaces'
@@ -16,7 +16,9 @@ import ExecutiveView from '@/components/dashboard/views/ExecutiveView'
 import EngineeringView from '@/components/dashboard/views/EngineeringView'
 import TransformationView from '@/components/dashboard/views/TransformationView'
 import FinanceView from '@/components/dashboard/views/FinanceView'
-import { fetchDashboardData } from '@/services/dashboard'
+import { useProjects } from '@/providers/ProjectsProvider'
+import { buildDashboardFromPortfolio } from '@/lib/portfolioDashboard'
+import { getAllSources, KNOWLEDGE_UPDATED_EVENT } from '@/services/knowledge'
 import type { DashboardData } from '@/types/dashboard'
 import { GenerateReportButton } from '@/components/reports/ExecutiveReportModal'
 import DashboardCustomizeBar from '@/components/dashboard/DashboardCustomizeBar'
@@ -68,14 +70,21 @@ function ViewHeader() {
 
 export default function DashboardPage() {
   const { activeWorkspace } = useOrganization()
-  const [data, setData] = useState<DashboardData | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { initiatives, ready: projectsReady } = useProjects()
+  const [knowledgeTick, setKnowledgeTick] = useState(0)
 
   useEffect(() => {
-    fetchDashboardData().then(setData).finally(() => setLoading(false))
+    const refresh = () => setKnowledgeTick((n) => n + 1)
+    window.addEventListener(KNOWLEDGE_UPDATED_EVENT, refresh)
+    return () => window.removeEventListener(KNOWLEDGE_UPDATED_EVENT, refresh)
   }, [])
 
-  if (loading || !data) return <DashboardSkeleton />
+  const data: DashboardData | null = useMemo(() => {
+    if (!projectsReady) return null
+    return buildDashboardFromPortfolio(initiatives, getAllSources())
+  }, [initiatives, projectsReady, knowledgeTick])
+
+  if (!data) return <DashboardSkeleton />
 
   return (
     <div className="space-y-6">

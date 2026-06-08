@@ -3,9 +3,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Sparkles, Send, ArrowRight, FileText, BookOpen, X } from 'lucide-react'
+import { Sparkles, Send, ArrowRight, FileText, BookOpen, X, Upload, Loader2 } from 'lucide-react'
 import { useCopilot } from '@/providers/CopilotProvider'
 import { QUICK_PROMPTS } from '@/services/ai'
+import DataProcessingConsent from '@/components/legal/DataProcessingConsent'
+import { hasDataConsent } from '@/lib/dataPolicy'
+import { readFileAsText } from '@/services/knowledge'
 import ArtifactCard from '@/components/ai/ArtifactCard'
 import type { AiMessage, AiAction } from '@/types/copilot'
 
@@ -97,6 +100,10 @@ export default function AiCopilot({ compact = false }: { compact?: boolean }) {
   const [input, setInput] = useState('')
   const [docOpen, setDocOpen] = useState(false)
   const [docText, setDocText] = useState('')
+  const [docTitle, setDocTitle] = useState('')
+  const [fileLoading, setFileLoading] = useState(false)
+  const [fileError, setFileError] = useState('')
+  const fileRef = useRef<HTMLInputElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const messages = activeThread?.messages ?? []
@@ -117,11 +124,32 @@ export default function AiCopilot({ compact = false }: { compact?: boolean }) {
     setInput('')
   }
 
+  async function handleFileUpload(file: File) {
+    setFileError('')
+    setFileLoading(true)
+    try {
+      const text = await readFileAsText(file)
+      setDocText(text)
+      setDocTitle(file.name.replace(/\.[^.]+$/, ''))
+      setDocOpen(true)
+    } catch (e) {
+      setFileError(e instanceof Error ? e.message : 'Import impossible')
+    } finally {
+      setFileLoading(false)
+    }
+  }
+
   function analyzeDoc() {
+    if (!hasDataConsent()) {
+      setFileError('Acceptez la politique de traitement des données IA.')
+      return
+    }
     if (!docText.trim()) return
-    sendDocument('Pasted document', docText)
+    sendDocument(docTitle || 'Pasted document', docText)
     setDocText('')
+    setDocTitle('')
     setDocOpen(false)
+    setFileError('')
   }
 
   return (
@@ -176,21 +204,29 @@ export default function AiCopilot({ compact = false }: { compact?: boolean }) {
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="mt-3 overflow-hidden">
             <div className="rounded-2xl border border-[var(--border-medium)] bg-[var(--bg-surface)] p-3">
               <div className="mb-2 flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-[var(--text-primary)]">Document understanding</span>
+                <span className="text-[11px] font-semibold text-[var(--text-primary)]">Analyse document (OpenAI)</span>
                 <button onClick={() => setDocOpen(false)} aria-label="Fermer"><X className="h-3.5 w-3.5 text-[var(--text-muted)]" /></button>
               </div>
+              <DataProcessingConsent compact />
+              <input
+                value={docTitle}
+                onChange={(e) => setDocTitle(e.target.value)}
+                placeholder="Titre du document"
+                className="mt-2 w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-strong)] px-2 py-1.5 text-[11px] outline-none focus:border-[var(--primary)]"
+              />
               <textarea
                 value={docText}
                 onChange={(e) => setDocText(e.target.value)}
-                placeholder="Paste a document, report or spec — I'll summarize and extract action items."
-                className="h-24 w-full resize-none rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-strong)] p-2.5 text-xs text-[var(--text-secondary)] outline-none focus:border-[var(--primary)]"
+                placeholder="Collez ou importez un fichier — analyse IA via Railway + OpenAI."
+                className="mt-2 h-24 w-full resize-none rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-strong)] p-2.5 text-xs text-[var(--text-secondary)] outline-none focus:border-[var(--primary)]"
               />
+              {fileError && <p className="mt-1 text-[10px] text-[var(--danger)]">{fileError}</p>}
               <button
                 onClick={analyzeDoc}
-                disabled={!docText.trim()}
+                disabled={!docText.trim() || streaming}
                 className="mt-2 rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] px-3.5 py-1.5 text-[11px] font-semibold text-white transition hover:opacity-90 disabled:opacity-40"
               >
-                Analyze document
+                Analyser avec l&apos;IA
               </button>
             </div>
           </motion.div>
@@ -199,9 +235,15 @@ export default function AiCopilot({ compact = false }: { compact?: boolean }) {
 
       <form onSubmit={submit} className="mt-3 flex items-center gap-2 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-1.5 focus-within:border-[var(--border-medium)]">
         {!compact && (
-          <button type="button" onClick={() => setDocOpen((o) => !o)} className="text-[var(--text-muted)] transition hover:text-[var(--primary)]" aria-label="Analyser un document">
-            <FileText className="h-4 w-4" />
-          </button>
+          <>
+            <input ref={fileRef} type="file" accept=".txt,.md,.csv,.json,.log" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload(f); e.target.value = '' }} />
+            <button type="button" onClick={() => fileRef.current?.click()} disabled={fileLoading} className="text-[var(--text-muted)] transition hover:text-[var(--primary)]" aria-label="Importer un fichier">
+              {fileLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            </button>
+            <button type="button" onClick={() => setDocOpen((o) => !o)} className="text-[var(--text-muted)] transition hover:text-[var(--primary)]" aria-label="Coller un document">
+              <FileText className="h-4 w-4" />
+            </button>
+          </>
         )}
         <input
           value={input}

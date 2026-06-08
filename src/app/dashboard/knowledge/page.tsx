@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { BookOpen, FileText, Search, Sparkles, Tag, Upload, Brain, Layers } from 'lucide-react'
 import {
@@ -8,12 +8,14 @@ import {
   getAllTags,
   semanticSearch,
   recommendKnowledge,
-  ingestDocument,
   summarizeDocument,
   PLAYBOOKS,
+  KNOWLEDGE_UPDATED_EVENT,
+  getUserIngestedCount,
   type KnowledgeSource,
   type Playbook,
 } from '@/services/knowledge'
+import IngestDocumentModal from '@/components/knowledge/IngestDocumentModal'
 
 function DocCard({ doc }: { doc: KnowledgeSource }) {
   return (
@@ -60,7 +62,15 @@ export default function KnowledgeCenterPage() {
   const [query, setQuery] = useState('')
   const [activeTag, setActiveTag] = useState<string | null>(null)
   const [sources, setSources] = useState<KnowledgeSource[]>(() => getAllSources())
+  const [ingestOpen, setIngestOpen] = useState(false)
+  const userIngested = useMemo(() => getUserIngestedCount(), [sources])
   const tags = useMemo(() => getAllTags(), [sources])
+
+  useEffect(() => {
+    const refresh = () => setSources(getAllSources())
+    window.addEventListener(KNOWLEDGE_UPDATED_EVENT, refresh)
+    return () => window.removeEventListener(KNOWLEDGE_UPDATED_EVENT, refresh)
+  }, [])
   const recommendations = useMemo(() => recommendKnowledge(query || 'transformation'), [query])
 
   const searchResults = useMemo(() => {
@@ -85,15 +95,6 @@ export default function KnowledgeCenterPage() {
     return PLAYBOOKS.filter((p) => !activeTag || p.tags.includes(activeTag))
   }, [searchResults, activeTag])
 
-  function handleIngest() {
-    const title = prompt('Document title')
-    if (!title) return
-    const content = prompt('Paste document content (mock ingest)')
-    if (!content) return
-    ingestDocument(title, content)
-    setSources(getAllSources())
-  }
-
   return (
     <div className="space-y-6">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-wrap items-end justify-between gap-4">
@@ -108,10 +109,26 @@ export default function KnowledgeCenterPage() {
             </div>
           </div>
         </div>
-        <button onClick={handleIngest} className="flex items-center gap-2 rounded-xl border border-[var(--border-medium)] bg-[var(--bg-surface)] px-4 py-2 text-xs font-semibold text-[var(--text-secondary)] transition hover:border-[var(--primary)]">
-          <Upload className="h-3.5 w-3.5" /> Ingest document
+        <button onClick={() => setIngestOpen(true)} className="flex items-center gap-2 rounded-xl border border-[var(--border-medium)] bg-[var(--bg-surface)] px-4 py-2 text-xs font-semibold text-[var(--text-secondary)] transition hover:border-[var(--primary)]">
+          <Upload className="h-3.5 w-3.5" /> Ingérer un document
         </button>
       </motion.div>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        {[
+          { label: 'Documents indexés', value: sources.length },
+          { label: 'Vos imports', value: userIngested },
+          { label: 'Playbooks', value: PLAYBOOKS.length },
+        ].map((s) => (
+          <div key={s.label} className="glass-panel rounded-2xl p-4 text-center">
+            <p className="text-2xl font-bold text-[var(--text-primary)]">{s.value}</p>
+            <p className="mt-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">{s.label}</p>
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-[var(--text-muted)]">
+        Chaque document ingéré alimente la recherche sémantique, les citations du Copilot IA et recalcule les statistiques Analytics.
+      </p>
 
       <div className="glass-panel-strong glass-elevated rounded-3xl p-6">
         <div className="relative">
@@ -177,6 +194,8 @@ export default function KnowledgeCenterPage() {
           {filteredPlaybooks.map((pb) => <PlaybookCard key={pb.id} pb={pb} />)}
         </div>
       </section>
+
+      <IngestDocumentModal open={ingestOpen} onClose={() => setIngestOpen(false)} onIngested={() => setSources(getAllSources())} />
     </div>
   )
 }

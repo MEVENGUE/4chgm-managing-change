@@ -173,6 +173,18 @@ export function retrieve(query: string, topK = 3): KnowledgeRef[] {
     }))
 }
 
+export const KNOWLEDGE_UPDATED_EVENT = '4chgm-knowledge-updated'
+
+export function notifyKnowledgeUpdated() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(KNOWLEDGE_UPDATED_EVENT))
+  }
+}
+
+export function getUserIngestedCount(): number {
+  return loadIngested().length
+}
+
 export function ingestDocument(title: string, content: string, origin = 'Upload'): KnowledgeSource {
   const doc: KnowledgeSource = {
     id: `doc-${Date.now()}`,
@@ -186,7 +198,19 @@ export function ingestDocument(title: string, content: string, origin = 'Upload'
   const ingested = loadIngested()
   const next = [doc, ...ingested].slice(0, 25)
   persistIngested(next)
+  notifyKnowledgeUpdated()
   return doc
+}
+
+/** Read text files client-side for ingest / copilot upload. */
+export async function readFileAsText(file: File): Promise<string> {
+  const allowed = ['.txt', '.md', '.csv', '.json', '.log']
+  const name = file.name.toLowerCase()
+  if (!allowed.some((ext) => name.endsWith(ext))) {
+    throw new Error('Formats supportés : .txt, .md, .csv, .json, .log')
+  }
+  if (file.size > 512_000) throw new Error('Fichier trop volumineux (max 500 Ko)')
+  return file.text()
 }
 
 /** Lightweight extractive summary for document understanding. */

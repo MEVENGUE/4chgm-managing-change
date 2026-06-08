@@ -35,8 +35,9 @@ It unifies transformation strategy, agile delivery, risk governance, cost foreca
 | **Cinematic login** | Neural globe (R3F), floating AI insight cards, ambient engine, glassmorphism |
 | **Role workspaces** | Executive · Engineering · Transformation · Finance — RBAC-aware navigation |
 | **Live intelligence** | Portfolio changes propagate to analytics, risks, roadmap, notifications |
-| **AI Copilot** | Streaming chat, citations, artifacts, knowledge retrieval (mock → vector-ready) |
-| **Knowledge Center** | Enterprise docs, playbooks, semantic search, AI recommendations |
+| **AI Copilot** | Chat OpenAI, upload de documents (.txt/.md/.csv/.json), consentement RGPD, citations Knowledge |
+| **Knowledge Center** | Ingestion de documents, recherche sémantique, alimente Copilot + Analytics en temps réel |
+| **Mermaid Studio** | Édition live, génération IA OpenAI, export PNG haute résolution |
 | **Executive reports** | AI-generated summaries + export architecture |
 | **Dashboard personalization** | Drag-and-drop widgets per workspace (`dnd-kit`) |
 | **i18n** | EN · FR · DE · ZH · JA · RU |
@@ -191,8 +192,9 @@ Le frontend fonctionne **sans backend** (mock data). Railway sert l'API FastAPI 
 
 | Variable | Valeur |
 |---|---|
-| `CORS_ORIGINS` | URL Vercel de ton frontend, ex. `https://4chgm.vercel.app` |
-| `OPENAI_API_KEY` | *(optionnel)* pour l'IA réelle |
+| `CORS_ORIGINS` | URL Vercel + localhost, ex. `https://4chgm.vercel.app,http://localhost:3000` |
+| `OPENAI_API_KEY` | Clé OpenAI — active chat, analyse document, génération Mermaid |
+| `OPENAI_MODEL` | Modèle (défaut `gpt-4o-mini`) |
 
 5. **Settings → Networking** → **Generate Domain** → copie l'URL publique
 6. Dans **Vercel**, ajoute `NEXT_PUBLIC_API_URL` = URL Railway (sans `/` final)
@@ -201,6 +203,16 @@ Le frontend fonctionne **sans backend** (mock data). Railway sert l'API FastAPI 
 Vérification : `https://ton-api.up.railway.app/health` → `{"status":"ok"}`
 
 Fichiers Railway inclus : `backend/railway.toml`, `backend/Procfile`, `backend/requirements.txt`
+
+### Endpoints IA (Railway)
+
+| Route | Description |
+|---|---|
+| `POST /api/ai/chat` | Copilot — contexte organisation + portfolio |
+| `POST /api/ai/analyze-document` | Analyse OpenAI d'un document uploadé (`consentAccepted: true` requis) |
+| `POST /api/ai/mermaid` | Génération de diagramme Mermaid depuis un prompt |
+
+Sans `OPENAI_API_KEY`, ces routes répondent en mode mock. Le frontend exige le consentement utilisateur (`/privacy`) avant tout upload IA.
 
 ---
 
