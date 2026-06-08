@@ -12,7 +12,7 @@
 
 *Cinematic enterprise UX · Role-based workspaces · Live portfolio intelligence · AI copilot*
 
-[Live Demo](https://mevenguefranck-siteweb.vercel.app/) · [Documentation](#-déploiement-vercel) · [Report Bug](https://github.com/MEVENGUE/4chgm-enterprise-os/issues)
+[Live Demo](https://4chgm-managing-change.vercel.app/) · [Documentation](#-déploiement-vercel) · [Report Bug](https://github.com/MEVENGUE/4chgm-enterprise-os/issues)
 
 </div>
 
