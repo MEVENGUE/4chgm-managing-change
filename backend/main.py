@@ -1,4 +1,4 @@
-"""NEXORA OS — FastAPI backend.
+"""4CHGM — FastAPI backend.
 
 Serves the same data shapes the Next.js frontend expects. The frontend points at
 this API by setting NEXT_PUBLIC_API_URL (e.g. http://localhost:8000). Without it,
@@ -21,7 +21,7 @@ from pydantic import BaseModel
 
 load_dotenv()
 
-app = FastAPI(title="NEXORA OS API", version="0.1.0")
+app = FastAPI(title="4CHGM API", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -158,7 +158,7 @@ def ai_chat(req: ChatRequest):
         completion = client.chat.completions.create(
             model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
             messages=[
-                {"role": "system", "content": "You are NEXORA OS, an enterprise transformation copilot. Be concise, strategic and actionable."},
+                {"role": "system", "content": "You are 4CHGM, an enterprise transformation copilot. Be concise, strategic and actionable."},
                 {"role": "user", "content": req.prompt},
             ],
         )
