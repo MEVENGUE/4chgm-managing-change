@@ -1,0 +1,230 @@
+/* 4CHGM — Cinematic Ambient Engine */
+
+.cinematic-ambient {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: layout paint style;
+}
+
+.cinematic-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(72px);
+  will-change: transform;
+  transform: translateZ(0);
+  opacity: 0.42;
+}
+
+.cinematic-orb-1 {
+  width: min(52vw, 640px);
+  height: min(52vw, 640px);
+  top: -14%;
+  left: -10%;
+  background: radial-gradient(circle at 40% 40%, var(--glow-primary), transparent 68%);
+  animation: cinematic-orb-drift-1 38s ease-in-out infinite alternate;
+}
+
+.cinematic-orb-2 {
+  width: min(44vw, 520px);
+  height: min(44vw, 520px);
+  bottom: -16%;
+  right: -8%;
+  background: radial-gradient(circle at 55% 55%, var(--glow-secondary), transparent 70%);
+  animation: cinematic-orb-drift-2 44s ease-in-out infinite alternate;
+}
+
+.cinematic-orb-3 {
+  width: min(36vw, 420px);
+  height: min(36vw, 420px);
+  top: 42%;
+  left: 38%;
+  background: radial-gradient(circle at center, color-mix(in srgb, var(--primary) 40%, transparent), transparent 72%);
+  opacity: 0.28;
+  animation: cinematic-orb-drift-3 52s ease-in-out infinite alternate;
+}
+
+.cinematic-radial-light {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(48px);
+  opacity: 0.35;
+  will-change: transform, opacity;
+  animation: cinematic-light-pulse 12s ease-in-out infinite;
+}
+
+.cinematic-grid-layer {
+  position: absolute;
+  inset: -2%;
+  background-image:
+    linear-gradient(to right, var(--border-subtle) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--border-subtle) 1px, transparent 1px);
+  background-size: 72px 72px;
+  opacity: 0.28;
+  mask-image: radial-gradient(ellipse 88% 72% at 50% 38%, #000 25%, transparent 78%);
+  -webkit-mask-image: radial-gradient(ellipse 88% 72% at 50% 38%, #000 25%, transparent 78%);
+  animation: cinematic-grid-drift 80s linear infinite;
+}
+
+.cinematic-noise-layer {
+  position: absolute;
+  inset: 0;
+  opacity: 0.045;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+}
+
+.cinematic-volumetric {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 120% 80% at 50% 0%, color-mix(in srgb, var(--primary) 8%, transparent), transparent 55%),
+    radial-gradient(ellipse 90% 60% at 80% 100%, color-mix(in srgb, var(--secondary) 6%, transparent), transparent 50%),
+    radial-gradient(ellipse 100% 100% at 50% 50%, transparent 40%, var(--bg-base) 120%);
+  opacity: 0.85;
+}
+
+.cinematic-cursor-glow {
+  position: fixed;
+  width: 420px;
+  height: 420px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 1;
+  background: radial-gradient(circle, var(--glow-primary) 0%, transparent 68%);
+  filter: blur(40px);
+  opacity: 0;
+  transition: opacity 0.6s ease;
+  will-change: transform;
+  transform: translate(-50%, -50%) translateZ(0);
+}
+
+.cinematic-cursor-glow.active {
+  opacity: 0.22;
+}
+
+[data-theme='light'] .cinematic-orb { opacity: 0.38; }
+[data-theme='light'] .cinematic-orb-3 { opacity: 0.22; }
+[data-theme='light'] .cinematic-noise-layer { opacity: 0.05; mix-blend-mode: multiply; }
+[data-theme='light'] .cinematic-cursor-glow.active { opacity: 0.16; }
+[data-theme='light'] .cinematic-grid-layer { opacity: 0.38; }
+
+/* Premium auth glass */
+.premium-auth-card {
+  position: relative;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--bg-surface-strong) 92%, transparent), color-mix(in srgb, var(--bg-surface) 88%, transparent));
+  border: 1px solid color-mix(in srgb, var(--border-medium) 80%, var(--primary) 20%);
+  border-radius: var(--radius-3xl);
+  box-shadow:
+    var(--panel-shadow-ambient),
+    var(--panel-shadow-key),
+    inset 0 1px 0 var(--panel-highlight),
+    0 0 60px -28px var(--glow-primary);
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  transition:
+    transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.45s ease;
+}
+
+.premium-auth-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(120% 80% at 50% -20%, var(--panel-sheen), transparent 55%);
+  opacity: 0.9;
+}
+
+.premium-auth-card::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  pointer-events: none;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 35%, transparent), transparent 40%, color-mix(in srgb, var(--secondary) 25%, transparent));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0.55;
+}
+
+.premium-auth-card:hover {
+  transform: translateY(-3px);
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border-medium));
+  box-shadow:
+    var(--panel-shadow-ambient),
+    var(--panel-shadow-key),
+    inset 0 1px 0 var(--panel-highlight),
+    0 0 72px -24px var(--glow-primary);
+}
+
+/* Floating insight cards */
+.floating-insight-card {
+  position: absolute;
+  z-index: 12;
+  min-width: 168px;
+  max-width: 200px;
+  padding: 0.75rem 0.875rem;
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--bg-surface) 72%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-medium) 70%, var(--primary) 30%);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  box-shadow:
+    0 12px 40px -16px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 var(--panel-highlight),
+    0 0 32px -18px var(--glow-primary);
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.4s ease;
+}
+
+.floating-insight-card:hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow:
+    0 18px 48px -14px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 var(--panel-highlight),
+    0 0 40px -14px var(--glow-primary);
+}
+
+@keyframes cinematic-orb-drift-1 {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  100% { transform: translate3d(5vw, 4vh, 0) scale(1.08); }
+}
+
+@keyframes cinematic-orb-drift-2 {
+  0% { transform: translate3d(0, 0, 0) scale(1.04); }
+  100% { transform: translate3d(-4vw, -5vh, 0) scale(1); }
+}
+
+@keyframes cinematic-orb-drift-3 {
+  0% { transform: translate3d(-50%, -50%, 0) scale(0.94); }
+  100% { transform: translate3d(-46%, -54%, 0) scale(1.06); }
+}
+
+@keyframes cinematic-light-pulse {
+  0%, 100% { opacity: 0.28; transform: scale(1); }
+  50% { opacity: 0.42; transform: scale(1.06); }
+}
+
+@keyframes cinematic-grid-drift {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(72px, 72px, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cinematic-orb,
+  .cinematic-radial-light,
+  .cinematic-grid-layer {
+    animation: none !important;
+  }
+  .premium-auth-card:hover {
+    transform: none;
+  }
+}
