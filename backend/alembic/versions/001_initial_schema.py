@@ -1,4 +1,4 @@
-"""Initial enterprise schema with pgvector
+"""Initial enterprise schema (portable Postgres — JSON embeddings, no pgvector)
 
 Revision ID: 001
 Revises:
@@ -9,7 +9,6 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
-from pgvector.sqlalchemy import Vector
 
 revision: str = "001"
 down_revision: Union[str, None] = None
@@ -18,8 +17,6 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
-
     op.create_table(
         "users",
         sa.Column("id", sa.String(36), primary_key=True),
@@ -96,7 +93,7 @@ def upgrade() -> None:
         sa.Column("id", sa.String(36), primary_key=True),
         sa.Column("document_id", sa.String(36), sa.ForeignKey("documents.id"), nullable=False),
         sa.Column("chunk_text", sa.Text(), nullable=False),
-        sa.Column("embedding", Vector(1536), nullable=True),
+        sa.Column("embedding", sa.JSON(), nullable=True),
         sa.Column("metadata", sa.JSON(), server_default="{}"),
     )
 

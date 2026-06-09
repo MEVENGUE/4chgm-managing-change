@@ -73,7 +73,7 @@ Streaming: `POST /api/v1/copilot/chat/stream` emits SSE `token` and `done` event
 ## Ingestion Pipeline
 
 ```
-Upload → R2/local → parse (PDF/DOCX/XLSX/OCR) → chunk → embed → pgvector
+Upload → R2/local → parse (PDF/DOCX/XLSX/OCR) → chunk → embed → PostgreSQL JSON
 Connector sync → document row → index_document_text
 ```
 

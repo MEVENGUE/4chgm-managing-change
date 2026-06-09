@@ -5,14 +5,10 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from pgvector.sqlalchemy import Vector
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.config import get_settings
 from app.database import Base
-
-settings = get_settings()
 
 
 def _uuid() -> str:
@@ -119,7 +115,8 @@ class DocumentChunk(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     document_id: Mapped[str] = mapped_column(ForeignKey("documents.id"), index=True)
     chunk_text: Mapped[str] = mapped_column(Text)
-    embedding = mapped_column(Vector(settings.embedding_dimensions), nullable=True)
+    # JSON array of floats — portable across Railway Postgres (no pgvector extension)
+    embedding: Mapped[list | None] = mapped_column(JSON, nullable=True)
     metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
 
     document: Mapped["Document"] = relationship(back_populates="chunks")

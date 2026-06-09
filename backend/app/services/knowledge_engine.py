@@ -1,15 +1,15 @@
-"""Hybrid knowledge retrieval — keyword + pgvector semantic search."""
+"""Hybrid knowledge retrieval — keyword + semantic search (JSON embeddings, no pgvector required)."""
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
 
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.models import Document, DocumentChunk, Project
 from app.services import embeddings
+from app.services.vector_utils import as_float_list, cosine_similarity
 
 STOP = frozenset({"the", "a", "an", "of", "to", "and", "for", "in", "on", "is", "are", "with", "our", "your"})
 
@@ -43,26 +43,41 @@ def keyword_search_documents(db: Session, workspace_id: str, query: str, limit: 
 
 
 def vector_search_chunks(db: Session, workspace_id: str, query: str, limit: int = 6) -> list[RetrievalHit]:
+    """Semantic search using stored JSON embeddings (works without pgvector)."""
     vectors = embeddings.generate_embeddings([query])
     if not vectors:
         return []
-    vec_literal = "[" + ",".join(str(v) for v in vectors[0]) + "]"
-    sql = text(
-        """
-        SELECT dc.document_id, d.file_name, dc.chunk_text,
-               1 - (dc.embedding <=> CAST(:vec AS vector)) AS score
-        FROM document_chunks dc
-        JOIN documents d ON d.id = dc.document_id
-        WHERE d.workspace_id = :ws AND dc.embedding IS NOT NULL
-        ORDER BY dc.embedding <=> CAST(:vec AS vector)
-        LIMIT :lim
-        """
+    query_vec = vectors[0]
+
+    rows = (
+        db.query(DocumentChunk, Document)
+        .join(Document, Document.id == DocumentChunk.document_id)
+        .filter(
+            Document.workspace_id == workspace_id,
+            DocumentChunk.embedding.isnot(None),
+        )
+        .all()
     )
-    rows = db.execute(sql, {"vec": vec_literal, "ws": workspace_id, "lim": limit}).fetchall()
-    return [
-        RetrievalHit(r[0], r[1], (r[2] or "")[:240], float(r[3]), "chunk")
-        for r in rows
-    ]
+
+    hits: list[RetrievalHit] = []
+    for chunk, doc in rows:
+        emb = as_float_list(chunk.embedding)
+        if not emb:
+            continue
+        score = cosine_similarity(query_vec, emb)
+        if score <= 0:
+            continue
+        hits.append(
+            RetrievalHit(
+                doc.id,
+                doc.file_name,
+                (chunk.chunk_text or "")[:240],
+                float(score),
+                "chunk",
+            )
+        )
+
+    return sorted(hits, key=lambda h: h.score, reverse=True)[:limit]
 
 
 def search_projects(db: Session, workspace_id: str, query: str, limit: int = 4) -> list[RetrievalHit]:

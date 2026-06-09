@@ -3,10 +3,15 @@ set -e
 
 PORT="${PORT:-8000}"
 
-# Migrations en arrière-plan — ne bloque pas le healthcheck Railway
+# Migrations avant démarrage — schéma requis pour auth/projets
 if [ -n "$DATABASE_URL" ]; then
-  echo "Running alembic migrations (background)..."
-  (alembic upgrade head && echo "Migrations OK") || echo "WARN: migrations failed — API still starting" &
+  echo "Running alembic migrations..."
+  if alembic upgrade head; then
+    echo "Migrations OK"
+  else
+    echo "ERROR: migrations failed — check DATABASE_URL and logs"
+    exit 1
+  fi
 else
   echo "WARN: DATABASE_URL not set — skipping migrations"
 fi
