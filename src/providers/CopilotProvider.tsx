@@ -12,7 +12,7 @@ import {
   type EngineResult,
 } from '@/services/ai'
 import { chatWithApi } from '@/services/aiApi'
-import { streamRagWithApi } from '@/services/copilotApi'
+import { chatRagWithApi, streamRagWithApi } from '@/services/copilotApi'
 import { getAccessToken } from '@/services/auth/tokenService'
 import { isApiEnabled } from '@/lib/apiClient'
 import { hasDataConsent } from '@/lib/dataPolicy'
@@ -156,6 +156,40 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
     updateThread(activeThreadId, (t) => ({ ...t, attachments: [] }), true)
   }, [activeThreadId, updateThread])
 
+  const appendAssistantStream = useCallback(
+    async (threadId: string, assistantId: string, result: EngineResult) => {
+      let appended = false
+      for await (const partial of streamAnswerText(result.content)) {
+        if (!appended) {
+          appended = true
+          updateThread(threadId, (t) => ({
+            ...t,
+            messages: [...t.messages, { id: assistantId, role: 'assistant', content: partial, timestamp: new Date().toISOString() }],
+          }))
+        } else {
+          updateThread(threadId, (t) => ({
+            ...t,
+            messages: t.messages.map((m) => (m.id === assistantId ? { ...m, content: partial } : m)),
+          }))
+        }
+      }
+      updateThread(
+        threadId,
+        (t) => ({
+          ...t,
+          updatedAt: new Date().toISOString(),
+          messages: t.messages.map((m) =>
+            m.id === assistantId
+              ? { ...m, citations: result.citations, actions: result.actions, artifact: result.artifact, contextUsed: result.contextUsed }
+              : m
+          ),
+        }),
+        true
+      )
+    },
+    [updateThread]
+  )
+
   const runStreamFromApi = useCallback(
     async (threadId: string, userMsg: AiMessage, prompt: string, threadAttachments: ChatAttachment[]) => {
       updateThread(threadId, (t) => ({
@@ -169,25 +203,61 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
       let full = ''
       let citations = retrieve(prompt + threadAttachments.map((a) => a.text).join(' ').slice(0, 300))
       let doneMeta: { threadId?: string; citations?: typeof citations } = {}
-      for await (const event of streamRagWithApi(prompt, ctx, threadId, threadAttachments)) {
-        if (event.type === 'token') {
-          full += event.content
-          if (full.trim()) {
-            updateThread(threadId, (t) => {
-              const exists = t.messages.some((m) => m.id === assistantId)
-              return {
-                ...t,
-                messages: exists
-                  ? t.messages.map((m) => (m.id === assistantId ? { ...m, content: full } : m))
-                  : [...t.messages, { id: assistantId, role: 'assistant' as const, content: full, timestamp: new Date().toISOString() }],
-              }
-            })
+      let gotStream = false
+
+      const rag = await chatRagWithApi(prompt, ctx, threadId, threadAttachments)
+      if (rag?.content?.trim()) {
+        gotStream = true
+        full = rag.content
+        citations = rag.citations?.length ? rag.citations : citations
+        if (rag.threadId) doneMeta.threadId = rag.threadId
+        updateThread(threadId, (t) => ({
+          ...t,
+          messages: [
+            ...t.messages,
+            {
+              id: assistantId,
+              role: 'assistant' as const,
+              content: full,
+              timestamp: new Date().toISOString(),
+              citations,
+              actions: rag.actions,
+              contextUsed: ['RAG API', 'OpenAI', ...citations.map((c) => c.title)],
+            },
+          ],
+        }))
+      } else {
+        for await (const event of streamRagWithApi(prompt, ctx, threadId, threadAttachments)) {
+          gotStream = true
+          if (event.type === 'token') {
+            full += event.content
+            if (full.trim()) {
+              updateThread(threadId, (t) => {
+                const exists = t.messages.some((m) => m.id === assistantId)
+                return {
+                  ...t,
+                  messages: exists
+                    ? t.messages.map((m) => (m.id === assistantId ? { ...m, content: full } : m))
+                    : [...t.messages, { id: assistantId, role: 'assistant' as const, content: full, timestamp: new Date().toISOString() }],
+                }
+              })
+            }
+          } else if (event.type === 'done') {
+            citations = event.citations?.length ? event.citations : citations
+            doneMeta = event
           }
-        } else if (event.type === 'done') {
-          citations = event.citations?.length ? event.citations : citations
-          doneMeta = event
         }
       }
+
+      if (!full.trim()) {
+        const fallback = threadAttachments.length
+          ? generateAnswerWithAttachments(prompt, threadAttachments, ctx)
+          : generateAnswer(prompt, ctx)
+        await appendAssistantStream(threadId, assistantId, fallback)
+        setStreaming(false)
+        return
+      }
+
       const mock = threadAttachments.length
         ? generateAnswerWithAttachments(prompt, threadAttachments, ctx)
         : generateAnswer(prompt, ctx)
@@ -203,12 +273,9 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
                   citations,
                   actions: mock.actions,
                   artifact: mock.artifact,
-                  contextUsed: [
-                    'RAG stream',
-                    'OpenAI',
-                    ...threadAttachments.map((a) => a.title),
-                    ...citations.map((c) => c.title),
-                  ],
+                  contextUsed: gotStream
+                    ? ['RAG', 'OpenAI', ...threadAttachments.map((a) => a.title), ...citations.map((c) => c.title)]
+                    : mock.contextUsed,
                 }
               : m
           ),
@@ -218,7 +285,7 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
       if (doneMeta.threadId) setActiveThreadId(doneMeta.threadId)
       setStreaming(false)
     },
-    [ctx, updateThread]
+    [appendAssistantStream, ctx, updateThread]
   )
 
   const runStream = useCallback(

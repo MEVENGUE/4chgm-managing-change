@@ -24,7 +24,7 @@ function Dropdown({ open, onClose, children, className = '' }: { open: boolean; 
   return (
     <AnimatePresence>
       {open && (
-        <motion.div ref={ref} initial={{ opacity: 0, y: -8, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.96 }} transition={{ duration: 0.15 }} className={`dropdown-panel absolute right-0 top-full mt-2 ${className}`}>
+        <motion.div ref={ref} initial={{ opacity: 0, y: -8, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.96 }} transition={{ duration: 0.15 }} className={`dropdown-panel absolute right-0 top-full z-[120] mt-2 ${className}`}>
           {children}
         </motion.div>
       )}
@@ -64,23 +64,65 @@ export default function Topbar() {
             </span>
             <ChevronsUpDown className="h-3.5 w-3.5 text-[var(--text-muted)]" />
           </button>
-          <Dropdown open={wsOpen} onClose={() => setWsOpen(false)} className="w-72 p-2">
-            <p className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{t('common.workspaces')}</p>
-            {workspaces.map((ws) => (
-              <button key={ws.id} onClick={() => { setActiveWorkspace(ws.id); setWsOpen(false) }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-[var(--bg-surface-hover)]">
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg text-white" style={{ background: ws.accent }}><Layers className="h-3.5 w-3.5" /></span>
-                <span className="flex-1">
-                  <span className="block text-sm font-medium text-[var(--text-primary)]">{ws.name}</span>
-                  <span className="block text-[10px] text-[var(--text-muted)]">{ws.department}</span>
-                </span>
-                <span className="mr-2 rounded-full border border-[var(--border-subtle)] px-2 py-0.5 text-[9px] font-semibold text-[var(--text-secondary)]">{ws.role}</span>
-                {activeWorkspace.id === ws.id && <Check className="h-4 w-4 text-[var(--primary)]" />}
-              </button>
-            ))}
-            <div className="mt-1 border-t border-[var(--border-subtle)] pt-1">
-              <Link href="/onboarding" onClick={() => setWsOpen(false)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-[var(--text-secondary)] transition hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text-primary)]">
-                <Settings className="h-4 w-4" />
-                {organization.onboarded ? t('common.reconfigureOrg') : t('common.completeSetup')}
+          <Dropdown open={wsOpen} onClose={() => setWsOpen(false)} className="w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden p-0 shadow-2xl">
+            <div className="border-b border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-4 py-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{t('common.workspaces')}</p>
+              <p className="mt-1 truncate text-sm font-semibold text-[var(--text-primary)]">{orgName}</p>
+            </div>
+            <div className="max-h-[min(22rem,55vh)] overflow-y-auto p-2 scrollbar-hide">
+              {workspaces.map((ws) => {
+                const active = activeWorkspace.id === ws.id
+                return (
+                  <button
+                    key={ws.id}
+                    type="button"
+                    onClick={() => { setActiveWorkspace(ws.id); setWsOpen(false) }}
+                    className={`mb-1 flex w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left transition last:mb-0 ${
+                      active
+                        ? 'border-[var(--primary)]/35 bg-[color-mix(in_srgb,var(--primary)_12%,transparent)]'
+                        : 'border-transparent hover:border-[var(--border-subtle)] hover:bg-[var(--bg-surface-hover)]'
+                    }`}
+                  >
+                    <span
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xs font-bold text-white shadow-sm"
+                      style={{ background: `linear-gradient(135deg, ${ws.accent}, color-mix(in srgb, ${ws.accent} 55%, #000))` }}
+                    >
+                      {ws.name.slice(0, 2).toUpperCase()}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-[var(--text-primary)]">{ws.name}</span>
+                      <span className="mt-0.5 block truncate text-[11px] text-[var(--text-muted)]">
+                        {ws.department}
+                        <span className="mx-1 opacity-40">·</span>
+                        {ws.role}
+                      </span>
+                    </span>
+                    {active ? (
+                      <Check className="h-4 w-4 shrink-0 text-[var(--primary)]" />
+                    ) : (
+                      <span
+                        className="shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold"
+                        style={{
+                          color: ws.accent,
+                          background: `color-mix(in srgb, ${ws.accent} 14%, transparent)`,
+                          border: `1px solid color-mix(in srgb, ${ws.accent} 28%, transparent)`,
+                        }}
+                      >
+                        {ws.role}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+            <div className="border-t border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-2">
+              <Link
+                href="/onboarding"
+                onClick={() => setWsOpen(false)}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--bg-surface-hover)] hover:text-[var(--text-primary)]"
+              >
+                <Settings className="h-4 w-4 shrink-0" />
+                <span className="truncate">{organization.onboarded ? t('common.reconfigureOrg') : t('common.completeSetup')}</span>
               </Link>
             </div>
           </Dropdown>

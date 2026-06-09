@@ -2,6 +2,7 @@
 set -e
 
 PORT="${PORT:-8000}"
+export PYTHONPATH="${PYTHONPATH:-/app}"
 
 # Migrations en arrière-plan — Uvicorn doit répondre vite au healthcheck Railway (/health)
 if [ -n "$DATABASE_URL" ]; then

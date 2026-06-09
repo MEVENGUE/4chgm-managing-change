@@ -242,12 +242,12 @@
   }
 
   .dropdown-panel {
-    background: var(--bg-elevated);
+    background: color-mix(in srgb, var(--bg-elevated) 96%, #000 4%);
     border: 1px solid var(--border-medium);
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-lg);
-    backdrop-filter: var(--blur-xl);
-    -webkit-backdrop-filter: var(--blur-xl);
+    backdrop-filter: var(--blur-xl) saturate(160%);
+    -webkit-backdrop-filter: var(--blur-xl) saturate(160%);
   }
 
   .command-palette {
