@@ -11,7 +11,7 @@ import {
   type EngineContext,
   type EngineResult,
 } from '@/services/ai'
-import { chatWithApi } from '@/services/aiApi'
+import { analyzeDocumentWithApi, chatWithApi } from '@/services/aiApi'
 import { chatRagWithApi, streamRagWithApi } from '@/services/copilotApi'
 import { getAccessToken } from '@/services/auth/tokenService'
 import { isApiEnabled } from '@/lib/apiClient'
@@ -333,22 +333,45 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
 
   const resolveAnswer = useCallback(
     async (prompt: string, threadAttachments: ChatAttachment[]): Promise<EngineResult> => {
-      if (threadAttachments.length > 0) {
-        return generateAnswerWithAttachments(prompt, threadAttachments, ctx)
-      }
-      const api = await chatWithApi(prompt, ctx)
-      if (api?.content) {
-        const citations = retrieve(prompt)
-        const mock = generateAnswer(prompt, ctx)
-        return {
-          content: api.content + (api.mock ? '\n\n_(Mode mock — OPENAI_API_KEY)_' : ''),
-          citations,
-          contextUsed: ['OpenAI', 'Organization profile', ...citations.map((c) => c.title)],
-          actions: mock.actions,
-          artifact: mock.artifact,
+      const citations = retrieve(
+        `${prompt} ${threadAttachments.map((a) => `${a.title} ${a.text}`).join(' ')}`.slice(0, 2000)
+      )
+      const mock = threadAttachments.length
+        ? generateAnswerWithAttachments(prompt, threadAttachments, ctx)
+        : generateAnswer(prompt, ctx)
+
+      if (isApiEnabled() && hasDataConsent()) {
+        if (threadAttachments.length > 0) {
+          const combined = threadAttachments.map((a) => `## ${a.title}\n${a.text}`).join('\n\n')
+          const analyzed = await analyzeDocumentWithApi(
+            threadAttachments.map((a) => a.title).join(', '),
+            combined,
+            ctx,
+            true
+          )
+          if (analyzed?.content) {
+            return {
+              content: analyzed.content + (analyzed.mock ? '\n\n_(Mode mock — OPENAI_API_KEY)_' : ''),
+              citations,
+              contextUsed: ['OpenAI', 'Document analysis', ...threadAttachments.map((a) => a.title), ...citations.map((c) => c.title)],
+              actions: mock.actions,
+              artifact: mock.artifact,
+            }
+          }
+        }
+        const api = await chatWithApi(prompt, ctx)
+        if (api?.content) {
+          return {
+            content: api.content + (api.mock ? '\n\n_(Mode mock — OPENAI_API_KEY)_' : ''),
+            citations,
+            contextUsed: ['OpenAI', 'Organization profile', ...citations.map((c) => c.title)],
+            actions: mock.actions,
+            artifact: mock.artifact,
+          }
         }
       }
-      return generateAnswer(prompt, ctx)
+
+      return mock
     },
     [ctx]
   )
@@ -370,7 +393,16 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
         attachments: threadAttachments.length ? [...threadAttachments] : undefined,
       }
 
-      if (isApiEnabled() && getAccessToken()) {
+      if (isApiEnabled()) {
+        const legacyResult = await resolveAnswer(prompt, threadAttachments)
+        const usedLegacyOpenAi =
+          legacyResult.contextUsed?.some((c) => c.includes('OpenAI')) &&
+          !legacyResult.content.includes('initiatives,') // heuristic: skip if still generic mock opener
+
+        if (usedLegacyOpenAi || !getAccessToken()) {
+          await runStream(activeThreadId, userMsg, legacyResult)
+          return
+        }
         await runStreamFromApi(activeThreadId, userMsg, prompt, threadAttachments)
         return
       }

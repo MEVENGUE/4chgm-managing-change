@@ -27,6 +27,19 @@ CORE_TABLES = frozenset(
     }
 )
 
+APP_TABLES_DROP_ORDER = [
+    "audit_logs",
+    "integrations",
+    "copilot_messages",
+    "copilot_threads",
+    "document_chunks",
+    "documents",
+    "projects",
+    "workspaces",
+    "organizations",
+    "users",
+]
+
 MAX_ATTEMPTS = 8
 RETRY_SECONDS = 3
 
@@ -65,6 +78,44 @@ def current_revision(engine) -> str | None:
         return conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
 
 
+def users_id_column_type(engine) -> str | None:
+    inspector = inspect(engine)
+    if "users" not in inspector.get_table_names():
+        return None
+    with engine.connect() as conn:
+        row = conn.execute(
+            text(
+                """
+                SELECT data_type
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'users'
+                  AND column_name = 'id'
+                """
+            )
+        ).fetchone()
+    return row[0] if row else None
+
+
+def legacy_schema_detected(engine) -> bool:
+    """Detect leftover tables (e.g. users.id INTEGER) incompatible with 4CHGM schema."""
+    id_type = users_id_column_type(engine)
+    if id_type is None:
+        return False
+    if id_type in ("character varying", "text", "uuid"):
+        return False
+    print(f"WARN: incompatible legacy users.id type: {id_type}")
+    return True
+
+
+def drop_app_schema(engine) -> None:
+    print("Resetting incompatible 4CHGM tables before migration...")
+    with engine.begin() as conn:
+        for table in APP_TABLES_DROP_ORDER:
+            conn.execute(text(f'DROP TABLE IF EXISTS "{table}" CASCADE'))
+        conn.execute(text('DROP TABLE IF EXISTS alembic_version CASCADE'))
+
+
 def main() -> int:
     settings = get_settings()
     if not settings.database_url:
@@ -77,11 +128,14 @@ def main() -> int:
         print(f"ERROR: could not connect to database: {exc}")
         return 1
 
+    if legacy_schema_detected(engine):
+        drop_app_schema(engine)
+
     tables = set(inspect(engine).get_table_names())
     revision = current_revision(engine)
 
     try:
-        if revision is None and CORE_TABLES.issubset(tables):
+        if revision is None and CORE_TABLES.issubset(tables) and not legacy_schema_detected(engine):
             print("Schema present without alembic_version — stamping head")
             subprocess.check_call([sys.executable, "-m", "alembic", "stamp", "head"])
             return 0
@@ -91,7 +145,15 @@ def main() -> int:
         return 0
     except subprocess.CalledProcessError as exc:
         print(f"ERROR: alembic failed with exit code {exc.returncode}")
-        return exc.returncode or 1
+        # Retry once after dropping partial/legacy schema (e.g. users.id INTEGER vs VARCHAR FK)
+        print("Retrying after full schema reset...")
+        drop_app_schema(engine)
+        try:
+            subprocess.check_call([sys.executable, "-m", "alembic", "upgrade", "head"])
+            return 0
+        except subprocess.CalledProcessError as retry_exc:
+            print(f"ERROR: alembic retry failed with exit code {retry_exc.returncode}")
+            return retry_exc.returncode or 1
 
 
 if __name__ == "__main__":
