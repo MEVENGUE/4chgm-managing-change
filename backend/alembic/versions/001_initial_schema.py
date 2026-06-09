@@ -29,8 +29,9 @@ def upgrade() -> None:
         sa.Column("company", sa.String(255), server_default=""),
         sa.Column("username", sa.String(64), server_default=""),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
+        if_not_exists=True,
     )
-    op.create_index("ix_users_email", "users", ["email"])
+    op.create_index("ix_users_email", "users", ["email"], if_not_exists=True)
 
     op.create_table(
         "organizations",
@@ -40,6 +41,7 @@ def upgrade() -> None:
         sa.Column("industry", sa.String(128), server_default=""),
         sa.Column("size", sa.String(64), server_default=""),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
+        if_not_exists=True,
     )
 
     op.create_table(
@@ -48,6 +50,7 @@ def upgrade() -> None:
         sa.Column("organization_id", sa.String(36), sa.ForeignKey("organizations.id"), nullable=False),
         sa.Column("name", sa.String(255), nullable=False),
         sa.Column("workspace_type", sa.String(64), server_default="transformation"),
+        if_not_exists=True,
     )
 
     op.create_table(
@@ -70,6 +73,7 @@ def upgrade() -> None:
         sa.Column("tags", sa.JSON(), server_default="[]"),
         sa.Column("dependencies", sa.JSON(), server_default="[]"),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
+        if_not_exists=True,
     )
 
     op.create_table(
@@ -86,6 +90,7 @@ def upgrade() -> None:
         sa.Column("status", sa.String(32), server_default="pending"),
         sa.Column("metadata", sa.JSON(), server_default="{}"),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
+        if_not_exists=True,
     )
 
     op.create_table(
@@ -95,6 +100,7 @@ def upgrade() -> None:
         sa.Column("chunk_text", sa.Text(), nullable=False),
         sa.Column("embedding", sa.JSON(), nullable=True),
         sa.Column("metadata", sa.JSON(), server_default="{}"),
+        if_not_exists=True,
     )
 
     op.create_table(
@@ -104,6 +110,7 @@ def upgrade() -> None:
         sa.Column("user_id", sa.String(36), sa.ForeignKey("users.id"), nullable=False),
         sa.Column("title", sa.String(255), server_default="New thread"),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
+        if_not_exists=True,
     )
 
     op.create_table(
@@ -114,6 +121,7 @@ def upgrade() -> None:
         sa.Column("content", sa.Text(), nullable=False),
         sa.Column("citations", sa.JSON(), server_default="[]"),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
+        if_not_exists=True,
     )
 
     op.create_table(
@@ -126,6 +134,7 @@ def upgrade() -> None:
         sa.Column("refresh_token", sa.Text(), nullable=True),
         sa.Column("metadata", sa.JSON(), server_default="{}"),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
+        if_not_exists=True,
     )
 
     op.create_table(
@@ -136,6 +145,7 @@ def upgrade() -> None:
         sa.Column("action", sa.String(128), nullable=False),
         sa.Column("details", sa.JSON(), server_default="{}"),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
+        if_not_exists=True,
     )
 
 

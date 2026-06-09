@@ -29,7 +29,9 @@ API docs: http://localhost:8000/docs
 3. Set variables from `.env.example` (`DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGINS`, optional `OPENAI_API_KEY`)
 4. Deploy — `start.sh` runs Alembic migrations before uvicorn
 
-**Note:** Embeddings are stored as JSON arrays in PostgreSQL so deployments work on Railway's default Postgres. Local Docker still uses `pgvector/pgvector` for dev parity, but the extension is not required.
+**Note:** Embeddings are stored as JSON arrays in PostgreSQL so deployments work on Railway's default Postgres. Migrations are idempotent (`IF NOT EXISTS`) and recover automatically if tables exist without `alembic_version` (common after a failed first deploy).
+
+If migrations remain stuck, reset the Railway PostgreSQL plugin and redeploy.
 
 ## Frontend Connection
 
