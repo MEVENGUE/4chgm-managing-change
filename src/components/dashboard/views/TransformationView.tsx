@@ -7,33 +7,29 @@ import ImpactDistribution from '@/components/dashboard/ImpactDistribution'
 import MotionCard from '@/components/motion/MotionCard'
 import AreaChartPremium, { type AreaPoint } from '@/components/charts/AreaChartPremium'
 import { useChartColors } from '@/components/charts/useChartColors'
+import { usePortfolioDashboard } from '@/hooks/usePortfolioDashboard'
+import { deriveCultureMetrics } from '@/lib/portfolioDerived'
 import type { DashboardData } from '@/types/dashboard'
-
-const ADOPTION: AreaPoint[] = [
-  { label: 'Jan', value: 40 }, { label: 'Feb', value: 48 }, { label: 'Mar', value: 55 },
-  { label: 'Apr', value: 61 }, { label: 'May', value: 68 }, { label: 'Jun', value: 74 },
-]
-
-const CULTURE = [
-  { label: 'Adoption', value: 74 },
-  { label: 'Engagement', value: 82 },
-  { label: 'Maturity', value: 68 },
-  { label: 'Readiness', value: 69 },
-]
-
-const RESISTANCE = [
-  { team: 'Finance', level: 38 },
-  { team: 'Operations', level: 24 },
-  { team: 'HR', level: 19 },
-  { team: 'Engineering', level: 11 },
-]
 
 export default function TransformationView({ data }: { data: DashboardData }) {
   const colors = useChartColors()
+  const { initiatives, intel } = usePortfolioDashboard()
+  const culture = deriveCultureMetrics(initiatives, intel.analytics)
+
+  const adoption: AreaPoint[] = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'].map((label, i) => ({
+    label,
+    value: Math.max(20, intel.analytics.adoptionTrend - (5 - i) * 6),
+  }))
+
+  const resistance = initiatives
+    .filter((i) => i.riskScore >= 40)
+    .slice(0, 4)
+    .map((i) => ({ team: i.owner.split(' ')[0] ?? i.name, level: i.riskScore }))
+
   return (
     <div className="space-y-5 md:space-y-6">
       <section className="grid auto-rows-fr grid-cols-2 gap-4 sm:gap-5 lg:grid-cols-4">
-        {CULTURE.map((c, i) => (
+        {culture.map((c, i) => (
           <MotionCard key={c.label} delay={i * 0.05} fill className="glass-panel-strong rounded-3xl p-5">
             <p className="kpi-label">{c.label}</p>
             <p className="kpi-value mt-2">{c.value}%</p>
@@ -48,7 +44,7 @@ export default function TransformationView({ data }: { data: DashboardData }) {
         <MotionCard delay={0.2} className="lg:col-span-2">
           <div className="glass-panel-strong rounded-3xl p-6">
             <p className="section-title">Adoption Trajectory</p>
-            <div className="mt-4"><AreaChartPremium data={ADOPTION} color={colors.primary} height={240} showAxis showGrid valueSuffix="%" /></div>
+            <div className="mt-4"><AreaChartPremium data={adoption} color={colors.primary} height={240} showAxis showGrid valueSuffix="%" /></div>
           </div>
         </MotionCard>
         <MotionCard delay={0.25}>
@@ -57,13 +53,13 @@ export default function TransformationView({ data }: { data: DashboardData }) {
       </section>
 
       <section className="grid gap-5 md:gap-6 lg:grid-cols-3 lg:items-start">
-        <MotionCard delay={0.3} fillChild><RoadmapTimeline /></MotionCard>
+        <MotionCard delay={0.3} fillChild><RoadmapTimeline roadmap={intel.roadmap} /></MotionCard>
         <MotionCard delay={0.35} fillChild><InsightFeed title="AI Transformation Recommendations" /></MotionCard>
         <MotionCard delay={0.4}>
           <div className="glass-panel-strong rounded-3xl p-6">
             <p className="section-title">Resistance Analysis</p>
             <div className="mt-4 space-y-3">
-              {RESISTANCE.map((r) => (
+              {(resistance.length ? resistance : [{ team: 'Portfolio', level: 15 }]).map((r) => (
                 <div key={r.team}>
                   <div className="mb-1 flex items-center justify-between text-xs">
                     <span className="text-[var(--text-secondary)]">{r.team}</span>

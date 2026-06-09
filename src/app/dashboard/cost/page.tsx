@@ -1,30 +1,29 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useMemo } from 'react'
 import { DollarSign } from 'lucide-react'
 import PageHeader from '@/components/layout/PageHeader'
 import MotionCard from '@/components/motion/MotionCard'
-import AreaChartPremium, { type AreaPoint } from '@/components/charts/AreaChartPremium'
+import AreaChartPremium from '@/components/charts/AreaChartPremium'
 import { useChartColors } from '@/components/charts/useChartColors'
-import { fetchCostForecast, type ForecastData } from '@/services/forecast'
+import { usePortfolioDashboard } from '@/hooks/usePortfolioDashboard'
+import { buildCostForecastFromPortfolio } from '@/lib/portfolioDerived'
 
 export default function CostPage() {
   const colors = useChartColors()
-  const [forecast, setForecast] = useState<ForecastData | null>(null)
+  const { initiatives, ready } = usePortfolioDashboard()
+  const forecast = useMemo(() => buildCostForecastFromPortfolio(initiatives), [initiatives])
+  const series = forecast.points.map((p) => ({ label: p.month, value: p.value }))
 
-  useEffect(() => {
-    fetchCostForecast().then(setForecast)
-  }, [])
+  const stats = [
+    { label: 'Projected Total', value: forecast.projectedTotal },
+    { label: 'Confidence', value: `${forecast.confidence}%` },
+    { label: 'Savings Opportunity', value: forecast.savingsOpportunity },
+  ]
 
-  const series: AreaPoint[] = forecast ? forecast.points.map((p) => ({ label: p.month, value: p.value })) : []
-
-  const stats = forecast
-    ? [
-        { label: 'Projected Total', value: forecast.projectedTotal },
-        { label: 'Confidence', value: `${forecast.confidence}%` },
-        { label: 'Savings Opportunity', value: forecast.savingsOpportunity },
-      ]
-    : []
+  if (!ready) {
+    return <div className="h-64 animate-pulse-soft rounded-3xl bg-[var(--bg-surface)]" />
+  }
 
   return (
     <div className="space-y-6">
@@ -43,11 +42,7 @@ export default function CostPage() {
         <div className="glass-panel-strong rounded-3xl p-6">
           <p className="section-title">Quarterly Cost Projection</p>
           <div className="mt-4">
-            {series.length > 0 ? (
-              <AreaChartPremium data={series} color={colors.primary} height={300} showAxis showGrid valuePrefix="$" valueSuffix="K" />
-            ) : (
-              <div className="h-[300px] animate-pulse-soft rounded-xl bg-[var(--bg-surface)]" />
-            )}
+            <AreaChartPremium data={series} color={colors.primary} height={300} showAxis showGrid valuePrefix="$" valueSuffix="K" />
           </div>
         </div>
       </MotionCard>

@@ -1,3 +1,5 @@
+export type OAuthProvider = 'google' | 'microsoft'
+
 export type UserProfile = {
   id: string
   email: string
@@ -12,6 +14,7 @@ export type UserProfile = {
   bio?: string
   avatarUrl?: string
   language?: string
+  authProvider?: 'email' | OAuthProvider
   createdAt: string
 }
 

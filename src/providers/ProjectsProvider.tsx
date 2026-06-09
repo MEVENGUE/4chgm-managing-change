@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { isApiEnabled } from '@/lib/apiClient'
+import { useAuth } from '@/providers/AuthProvider'
 import { getAccessToken } from '@/services/auth/tokenService'
 import {
   createProjectOnApi,
@@ -11,7 +12,7 @@ import {
 } from '@/services/projectsApi'
 import type { Initiative } from '@/types/projects'
 
-const STORAGE_KEY = '4chgm-projects'
+const STORAGE_PREFIX = '4chgm-projects'
 
 const SEED: Initiative[] = [
   {
@@ -112,24 +113,34 @@ type ProjectsContextValue = {
 
 const ProjectsContext = createContext<ProjectsContextValue | null>(null)
 
+function storageKey(userId?: string) {
+  return userId ? `${STORAGE_PREFIX}-${userId}` : STORAGE_PREFIX
+}
+
 export function ProjectsProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth()
   const [ready, setReady] = useState(false)
   const [initiatives, setInitiatives] = useState<Initiative[]>([])
+  const [apiPrimary, setApiPrimary] = useState(false)
 
   useEffect(() => {
     let cancelled = false
     async function load() {
+      setReady(false)
       if (isApiEnabled() && getAccessToken()) {
         const apiProjects = await fetchProjectsFromApi()
-        if (!cancelled && apiProjects && apiProjects.length > 0) {
+        if (!cancelled && apiProjects !== null) {
           setInitiatives(apiProjects)
+          setApiPrimary(true)
           setReady(true)
           return
         }
       }
+      setApiPrimary(false)
+      const key = storageKey(user?.id)
       let loaded: Initiative[] = SEED
       try {
-        const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem('nexora-projects')
+        const raw = localStorage.getItem(key) ?? localStorage.getItem(STORAGE_PREFIX) ?? localStorage.getItem('nexora-projects')
         if (raw) loaded = JSON.parse(raw) as Initiative[]
       } catch {
         /* ignore */
@@ -140,31 +151,47 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       }
     }
     load()
-    return () => { cancelled = true }
-  }, [])
-
-  const persist = useCallback((next: Initiative[]) => {
-    setInitiatives(next)
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-    } catch {
-      /* ignore */
+    return () => {
+      cancelled = true
     }
-  }, [])
+  }, [user?.id])
+
+  const persist = useCallback(
+    (next: Initiative[]) => {
+      setInitiatives(next)
+      if (apiPrimary) return
+      try {
+        localStorage.setItem(storageKey(user?.id), JSON.stringify(next))
+      } catch {
+        /* ignore */
+      }
+    },
+    [apiPrimary, user?.id]
+  )
 
   const addInitiative = useCallback(
     async (data: Omit<Initiative, 'id'>) => {
       if (isApiEnabled() && getAccessToken()) {
         const created = await createProjectOnApi(data)
         if (created) {
-          persist([created, ...initiatives])
+          setInitiatives((prev) => [created, ...prev])
           return
         }
       }
       const item: Initiative = { ...data, id: `i-${Date.now()}` }
-      persist([item, ...initiatives])
+      setInitiatives((prev) => {
+        const next = [item, ...prev]
+        if (!apiPrimary) {
+          try {
+            localStorage.setItem(storageKey(user?.id), JSON.stringify(next))
+          } catch {
+            /* ignore */
+          }
+        }
+        return next
+      })
     },
-    [initiatives, persist]
+    [apiPrimary, user?.id]
   )
 
   const updateInitiative = useCallback(
@@ -172,13 +199,23 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       if (isApiEnabled() && getAccessToken()) {
         const updated = await updateProjectOnApi(id, patch)
         if (updated) {
-          persist(initiatives.map((i) => (i.id === id ? updated : i)))
+          setInitiatives((prev) => prev.map((i) => (i.id === id ? updated : i)))
           return
         }
       }
-      persist(initiatives.map((i) => (i.id === id ? { ...i, ...patch } : i)))
+      setInitiatives((prev) => {
+        const next = prev.map((i) => (i.id === id ? { ...i, ...patch } : i))
+        if (!apiPrimary) {
+          try {
+            localStorage.setItem(storageKey(user?.id), JSON.stringify(next))
+          } catch {
+            /* ignore */
+          }
+        }
+        return next
+      })
     },
-    [initiatives, persist]
+    [apiPrimary, user?.id]
   )
 
   const removeInitiative = useCallback(
@@ -186,13 +223,29 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       if (isApiEnabled() && getAccessToken()) {
         const ok = await deleteProjectOnApi(id)
         if (ok) {
-          persist(initiatives.filter((i) => i.id !== id).map((i) => ({ ...i, dependencies: i.dependencies.filter((d) => d !== id) })))
+          setInitiatives((prev) =>
+            prev
+              .filter((i) => i.id !== id)
+              .map((i) => ({ ...i, dependencies: i.dependencies.filter((d) => d !== id) }))
+          )
           return
         }
       }
-      persist(initiatives.filter((i) => i.id !== id).map((i) => ({ ...i, dependencies: i.dependencies.filter((d) => d !== id) })))
+      setInitiatives((prev) => {
+        const next = prev
+          .filter((i) => i.id !== id)
+          .map((i) => ({ ...i, dependencies: i.dependencies.filter((d) => d !== id) }))
+        if (!apiPrimary) {
+          try {
+            localStorage.setItem(storageKey(user?.id), JSON.stringify(next))
+          } catch {
+            /* ignore */
+          }
+        }
+        return next
+      })
     },
-    [initiatives, persist]
+    [apiPrimary, user?.id]
   )
 
   const getById = useCallback((id: string) => initiatives.find((i) => i.id === id), [initiatives])

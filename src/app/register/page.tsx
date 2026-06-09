@@ -5,13 +5,14 @@ import Link from 'next/link'
 import { Loader2 } from 'lucide-react'
 import AuthLayout from '@/components/auth/AuthLayout'
 import AuthInput from '@/components/auth/AuthInput'
+import OAuthButtons from '@/components/auth/OAuthButtons'
 import PasswordStrength from '@/components/auth/PasswordStrength'
 import { useAuth } from '@/providers/AuthProvider'
 import { useTranslation } from '@/i18n/I18nProvider'
 
 export default function RegisterPage() {
   const { t } = useTranslation()
-  const { register } = useAuth()
+  const { register, loginWithOAuth } = useAuth()
   const [form, setForm] = useState({ firstName: '', lastName: '', username: '', company: '', role: '', email: '', password: '', confirm: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -67,6 +68,11 @@ export default function RegisterPage() {
           {t('auth.hasAccount')}{' '}
           <Link href="/login" className="font-semibold text-[var(--primary)] hover:underline">{t('auth.signIn')}</Link>
         </p>
+        <div className="relative py-2">
+          <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-[var(--border-subtle)]" /></div>
+          <p className="relative mx-auto w-fit bg-[var(--bg-surface)] px-3 text-[10px] text-[var(--text-muted)]">{t('auth.orContinue')}</p>
+        </div>
+        <OAuthButtons disabled={loading} onOAuth={(provider) => loginWithOAuth(provider, { afterRegister: true })} />
       </form>
     </AuthLayout>
   )

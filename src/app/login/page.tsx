@@ -5,12 +5,13 @@ import Link from 'next/link'
 import { Loader2 } from 'lucide-react'
 import AuthLayout from '@/components/auth/AuthLayout'
 import AuthInput from '@/components/auth/AuthInput'
+import OAuthButtons from '@/components/auth/OAuthButtons'
 import { useAuth } from '@/providers/AuthProvider'
 import { useTranslation } from '@/i18n/I18nProvider'
 
 export default function LoginPage() {
   const { t } = useTranslation()
-  const { login } = useAuth()
+  const { login, loginWithOAuth } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [remember, setRemember] = useState(false)
@@ -58,13 +59,7 @@ export default function LoginPage() {
           <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-[var(--border-subtle)]" /></div>
           <p className="relative mx-auto w-fit bg-[var(--bg-surface)] px-3 text-[10px] text-[var(--text-muted)]">{t('auth.orContinue')}</p>
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          {['google', 'microsoft'].map((p) => (
-            <button key={p} type="button" className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] py-2.5 text-xs font-medium text-[var(--text-secondary)] transition hover:border-[var(--border-medium)]">
-              {t(`auth.${p}`)}
-            </button>
-          ))}
-        </div>
+        <OAuthButtons disabled={loading} onOAuth={(provider) => loginWithOAuth(provider)} />
       </form>
     </AuthLayout>
   )

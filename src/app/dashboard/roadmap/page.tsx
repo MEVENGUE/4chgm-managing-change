@@ -1,19 +1,21 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useMemo } from 'react'
 import { Map } from 'lucide-react'
 import PageHeader from '@/components/layout/PageHeader'
 import MotionCard from '@/components/motion/MotionCard'
-import { fetchRoadmapPhases, type RoadmapPhase } from '@/services/roadmap'
+import { usePortfolioDashboard } from '@/hooks/usePortfolioDashboard'
+import { buildRoadmapPhasesFromPortfolio } from '@/lib/portfolioDerived'
 
 const MONTHS = ['May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov']
 
 export default function RoadmapPage() {
-  const [phases, setPhases] = useState<RoadmapPhase[]>([])
+  const { initiatives, ready } = usePortfolioDashboard()
+  const phases = useMemo(() => buildRoadmapPhasesFromPortfolio(initiatives), [initiatives])
 
-  useEffect(() => {
-    fetchRoadmapPhases().then(setPhases)
-  }, [])
+  if (!ready) {
+    return <div className="h-64 animate-pulse-soft rounded-3xl bg-[var(--bg-surface)]" />
+  }
 
   return (
     <div className="space-y-6">
@@ -55,7 +57,9 @@ export default function RoadmapPage() {
                 </div>
               )
             })}
-            {phases.length === 0 && <div className="h-40 animate-pulse-soft rounded-xl bg-[var(--bg-surface)]" />}
+            {phases.length === 0 && (
+              <p className="py-8 text-center text-sm text-[var(--text-muted)]">Add initiatives to build your roadmap.</p>
+            )}
           </div>
         </div>
       </MotionCard>

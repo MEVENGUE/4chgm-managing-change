@@ -1,34 +1,29 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { RefreshCw } from 'lucide-react'
 import PageHeader from '@/components/layout/PageHeader'
 import MotionCard from '@/components/motion/MotionCard'
 import InitiativesPanel from '@/components/dashboard/InitiativesPanel'
 import ImpactDistribution from '@/components/dashboard/ImpactDistribution'
-import { fetchDashboardData } from '@/services/dashboard'
-import type { DashboardData } from '@/types/dashboard'
+import { usePortfolioDashboard } from '@/hooks/usePortfolioDashboard'
 
 const AIGlobe = dynamic(() => import('@/components/three/AIGlobe'), { ssr: false })
 
 export default function TransformationPage() {
-  const [data, setData] = useState<DashboardData | null>(null)
+  const { data, ready } = usePortfolioDashboard()
+  const o = data.overview
 
-  useEffect(() => {
-    fetchDashboardData().then(setData)
-  }, [])
+  const stats = [
+    { label: 'People Impacted', value: o.peopleImpacted.toLocaleString() },
+    { label: 'On Track', value: `${o.projectsOnTrack}/${o.projectsTotal}` },
+    { label: 'At Risk', value: o.atRisk, color: 'var(--danger)' },
+    { label: 'Completed', value: o.completed, color: 'var(--success)' },
+  ]
 
-  const o = data?.overview
-
-  const stats = o
-    ? [
-        { label: 'People Impacted', value: o.peopleImpacted.toLocaleString() },
-        { label: 'On Track', value: `${o.projectsOnTrack}/${o.projectsTotal}` },
-        { label: 'At Risk', value: o.atRisk, color: 'var(--danger)' },
-        { label: 'Completed', value: o.completed, color: 'var(--success)' },
-      ]
-    : []
+  if (!ready) {
+    return <div className="h-64 animate-pulse-soft rounded-3xl bg-[var(--bg-surface)]" />
+  }
 
   return (
     <div className="space-y-6">
@@ -50,12 +45,12 @@ export default function TransformationPage() {
           </div>
         </MotionCard>
         <MotionCard delay={0.15}>
-          {o && <ImpactDistribution segments={o.impactDistribution} total={o.peopleImpacted.toLocaleString()} />}
+          <ImpactDistribution segments={o.impactDistribution} total={o.peopleImpacted.toLocaleString()} />
         </MotionCard>
       </section>
 
       <MotionCard delay={0.2} fillChild>
-        {data && <InitiativesPanel initiatives={data.initiatives} />}
+        <InitiativesPanel initiatives={data.initiatives} />
       </MotionCard>
     </div>
   )

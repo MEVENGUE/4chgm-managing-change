@@ -18,12 +18,13 @@ type Props = {
   insights?: Insight[]
 }
 
-export default function InsightsPanel({ insights = DEFAULT }: Props) {
+export default function InsightsPanel({ insights }: Props) {
+  const items = insights && insights.length > 0 ? insights : DEFAULT
   return (
     <div className="glass-panel-strong rounded-3xl p-6">
       <p className="section-title">Recent Insights</p>
       <div className="mt-4 space-y-3">
-        {insights.map((item) => {
+        {items.map((item) => {
           const color = PRIORITY_COLORS[item.priority]
           return (
             <div key={item.id} className="group rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 transition hover:border-[var(--border-medium)]">

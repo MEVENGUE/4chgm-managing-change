@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Database, FileText, Boxes, BarChart3, StickyNote, BookOpen } from 'lucide-react'
-import { getAllSources, type KnowledgeSource } from '@/services/knowledge'
+import { getAllSources, KNOWLEDGE_UPDATED_EVENT, type KnowledgeSource } from '@/services/knowledge'
 import { RECOMMENDATIONS } from '@/services/ai'
 import { useCopilot } from '@/providers/CopilotProvider'
 
@@ -21,7 +21,10 @@ export default function KnowledgePanel() {
   const [sources, setSources] = useState<KnowledgeSource[]>([])
 
   useEffect(() => {
-    setSources(getAllSources())
+    const refresh = () => setSources(getAllSources())
+    refresh()
+    window.addEventListener(KNOWLEDGE_UPDATED_EVENT, refresh)
+    return () => window.removeEventListener(KNOWLEDGE_UPDATED_EVENT, refresh)
   }, [])
 
   return (

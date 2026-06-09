@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Plug, Check, RefreshCw, AlertTriangle, Plus, Database } from 'lucide-react'
 import PageHeader from '@/components/layout/PageHeader'
@@ -9,6 +9,11 @@ import { isApiEnabled } from '@/lib/apiClient'
 import { getAccessToken } from '@/services/auth/tokenService'
 import { connectIntegration, fetchIntegrationsFromApi, syncIntegration } from '@/services/integrationsApi'
 import { CONNECTORS, type Connector, type ConnectorStatus } from '@/services/connectors'
+import {
+  mergeConnectorsWithStored,
+  mockConnectIntegration,
+  mockSyncIntegration,
+} from '@/services/integrationsStore'
 
 const STATUS_META: Record<ConnectorStatus, { label: string; color: string; icon: typeof Check }> = {
   connected: { label: 'Connected', color: 'var(--success)', icon: Check },
@@ -86,58 +91,70 @@ export default function IntegrationsPage() {
   const [connectors, setConnectors] = useState<Connector[]>(CONNECTORS)
   const [filter, setFilter] = useState<string>('All')
 
-  useEffect(() => {
-    async function load() {
-      let list = [...CONNECTORS]
-      if (isApiEnabled() && getAccessToken()) {
-        const api = await fetchIntegrationsFromApi()
-        if (api) {
-          list = list.map((c) => {
-            const row = api.find((a) => a.provider === c.id)
-            if (!row) return c
-            return {
-              ...c,
-              status: (row.status === 'connected' ? 'connected' : row.status === 'syncing' ? 'syncing' : row.status === 'available' ? 'available' : c.status) as ConnectorStatus,
-              records: row.records || c.records,
-              lastSync: row.lastSync || c.lastSync,
-            }
-          })
-        }
+  const reloadConnectors = useCallback(async () => {
+    let list = mergeConnectorsWithStored()
+    if (isApiEnabled() && getAccessToken()) {
+      const api = await fetchIntegrationsFromApi()
+      if (api) {
+        list = list.map((c) => {
+          const row = api.find((a) => a.provider === c.id)
+          if (!row) return c
+          return {
+            ...c,
+            status: (row.status === 'connected'
+              ? 'connected'
+              : row.status === 'syncing'
+                ? 'syncing'
+                : row.status === 'available'
+                  ? 'available'
+                  : c.status) as ConnectorStatus,
+            records: row.records || c.records,
+            lastSync: row.lastSync || c.lastSync,
+          }
+        })
       }
-      setConnectors(list)
     }
-    load()
+    setConnectors(list)
   }, [])
 
+  useEffect(() => {
+    reloadConnectors()
+  }, [reloadConnectors])
+
   async function handleAction(id: string, action: 'connect' | 'sync' | 'manage') {
-    if (!['jira', 'github', 'notion'].includes(id)) return
+    const useApi = isApiEnabled() && getAccessToken()
+
     if (action === 'connect') {
       setConnectors((prev) => prev.map((c) => (c.id === id ? { ...c, status: 'syncing' } : c)))
-      const res = await connectIntegration(id)
-      if (res?.ok) {
-        const api = await fetchIntegrationsFromApi()
-        if (api) {
-          setConnectors((prev) =>
-            prev.map((c) => {
-              const row = api.find((a) => a.provider === c.id)
-              return row && c.id === id ? { ...c, status: 'connected', records: row.records, lastSync: 'just now' } : c
-            })
-          )
+      if (useApi) {
+        const res = await connectIntegration(id)
+        if (res?.ok) {
+          await reloadConnectors()
+          return
+        }
+      } else {
+        const res = await mockConnectIntegration(id)
+        if (res.ok) {
+          await reloadConnectors()
+          return
         }
       }
+      setConnectors((prev) => prev.map((c) => (c.id === id ? { ...c, status: 'error', lastSync: 'connection failed' } : c)))
       return
     }
+
     setConnectors((prev) => prev.map((c) => (c.id === id ? { ...c, status: 'syncing' } : c)))
-    await syncIntegration(id)
-    const api = await fetchIntegrationsFromApi()
-    if (api) {
-      setConnectors((prev) =>
-        prev.map((c) => {
-          const row = api.find((a) => a.provider === c.id)
-          if (!row || c.id !== id) return c
-          return { ...c, status: 'connected', records: row.records, lastSync: row.lastSync ?? 'just now' }
-        })
-      )
+    if (useApi) {
+      await syncIntegration(id)
+      await reloadConnectors()
+      return
+    }
+
+    const res = await mockSyncIntegration(id)
+    if (res.ok) {
+      await reloadConnectors()
+    } else {
+      setConnectors((prev) => prev.map((c) => (c.id === id ? { ...c, status: 'error', lastSync: 'sync failed' } : c)))
     }
   }
 
@@ -160,8 +177,12 @@ export default function IntegrationsPage() {
         title="Data Connectors"
         subtitle={t('integrations.subtitle')}
         actions={
-          <button className="flex items-center gap-2 rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] px-4 py-2 text-xs font-semibold text-white shadow-lg transition hover:opacity-90">
-            <Plus className="h-4 w-4" /> Add source
+          <button
+            type="button"
+            onClick={() => reloadConnectors()}
+            className="flex items-center gap-2 rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] px-4 py-2 text-xs font-semibold text-white shadow-lg transition hover:opacity-90"
+          >
+            <RefreshCw className="h-4 w-4" /> Refresh
           </button>
         }
       />

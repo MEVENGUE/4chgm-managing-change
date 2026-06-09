@@ -54,7 +54,7 @@ export function derivePlatformState(initiatives: Initiative[]): PlatformIntellig
 
   const analytics: AnalyticsSnapshot = {
     velocityTrend: Math.round(initiatives.reduce((s, i) => s + i.progress, 0) / total),
-    adoptionTrend: Math.min(100, Math.round(onTrack / total * 100 + 12)),
+    adoptionTrend: Math.min(100, Math.round((onTrack / total) * 100)),
     costVariance: forecast.overrunPct,
     atRiskPct: Math.round((atRisk / total) * 100),
     onTrackPct: Math.round((onTrack / total) * 100),

@@ -1,34 +1,24 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import { ShieldAlert } from 'lucide-react'
 import PageHeader from '@/components/layout/PageHeader'
 import MotionCard from '@/components/motion/MotionCard'
 import InsightsPanel from '@/components/dashboard/InsightsPanel'
 import ImpactDistribution from '@/components/dashboard/ImpactDistribution'
-import { fetchDashboardData } from '@/services/dashboard'
-import type { DashboardData } from '@/types/dashboard'
+import { usePortfolioDashboard } from '@/hooks/usePortfolioDashboard'
 
 export default function RisksPage() {
-  const [data, setData] = useState<DashboardData | null>(null)
-
-  useEffect(() => {
-    fetchDashboardData().then(setData)
-  }, [])
-
-  const counts = data
-    ? {
-        high: data.insights.filter((i) => i.priority === 'high').length,
-        medium: data.insights.filter((i) => i.priority === 'medium').length,
-        low: data.insights.filter((i) => i.priority === 'low').length,
-      }
-    : { high: 0, medium: 0, low: 0 }
+  const { data, intel, ready } = usePortfolioDashboard()
 
   const stats = [
-    { label: 'High Risk', value: counts.high, color: 'var(--danger)' },
-    { label: 'Medium Risk', value: counts.medium, color: 'var(--warning)' },
-    { label: 'Low Risk', value: counts.low, color: 'var(--info)' },
+    { label: 'High Risk', value: intel.risks.high, color: 'var(--danger)' },
+    { label: 'Medium Risk', value: intel.risks.medium, color: 'var(--warning)' },
+    { label: 'Low Risk', value: intel.risks.low, color: 'var(--info)' },
   ]
+
+  if (!ready) {
+    return <div className="h-64 animate-pulse-soft rounded-3xl bg-[var(--bg-surface)]" />
+  }
 
   return (
     <div className="space-y-6">
@@ -45,15 +35,13 @@ export default function RisksPage() {
 
       <section className="grid gap-6 lg:grid-cols-3 lg:items-start">
         <MotionCard delay={0.1} className="lg:col-span-2">
-          {data && <InsightsPanel insights={data.insights} />}
+          <InsightsPanel insights={data.insights} />
         </MotionCard>
         <MotionCard delay={0.15}>
-          {data && (
-            <ImpactDistribution
-              segments={data.overview.impactDistribution}
-              total={data.overview.peopleImpacted.toLocaleString()}
-            />
-          )}
+          <ImpactDistribution
+            segments={data.overview.impactDistribution}
+            total={data.overview.peopleImpacted.toLocaleString()}
+          />
         </MotionCard>
       </section>
     </div>

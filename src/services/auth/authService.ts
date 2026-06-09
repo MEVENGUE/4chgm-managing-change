@@ -1,6 +1,6 @@
 import { BRAND } from '@/lib/brand'
 import { loginWithApi, registerWithApi } from '@/services/authApi'
-import type { AuthSession, LoginCredentials, RegisterPayload, UserProfile } from './types'
+import type { AuthSession, LoginCredentials, OAuthProvider, RegisterPayload, UserProfile } from './types'
 import {
   clearSessionCookie,
   clearSessionStorage,
@@ -54,6 +54,30 @@ export function getSession(): AuthSession | null {
   }
 }
 
+const OAUTH_PROFILES: Record<OAuthProvider, Pick<UserProfile, 'firstName' | 'lastName' | 'company' | 'role'>> = {
+  google: { firstName: 'Alex', lastName: 'Rivera', company: 'Acme Corp', role: 'Product Lead' },
+  microsoft: { firstName: 'Jordan', lastName: 'Kim', company: 'Acme Corp', role: 'Engineering Manager' },
+}
+
+/** Simulated OAuth sign-in for demo mode (works without backend credentials). */
+export async function loginWithOAuth(provider: OAuthProvider, remember = true): Promise<AuthSession> {
+  await delay(900)
+  const profile = OAUTH_PROFILES[provider]
+  const domain = provider === 'google' ? 'googleusercontent.com' : 'onmicrosoft.com'
+  const email = `${profile.firstName.toLowerCase()}.${profile.lastName.toLowerCase()}@${domain}`
+  const user: UserProfile = {
+    id: `u-oauth-${provider}-${Date.now()}`,
+    email,
+    ...profile,
+    username: `${profile.firstName.toLowerCase()}${profile.lastName[0]?.toLowerCase() ?? ''}`,
+    authProvider: provider,
+    createdAt: new Date().toISOString(),
+  }
+  const session = sessionFromUser(user, remember)
+  saveSession(session, remember)
+  return session
+}
+
 export async function login(credentials: LoginCredentials): Promise<AuthSession> {
   const apiSession = await loginWithApi(credentials)
   if (apiSession) {
@@ -68,6 +92,7 @@ export async function login(credentials: LoginCredentials): Promise<AuthSession>
     email,
     firstName: email.split('@')[0].split('.')[0] || DEMO_USER.firstName,
     lastName: email.split('@')[0].split('.')[1] || DEMO_USER.lastName,
+    authProvider: 'email',
   }
   const session = sessionFromUser(user, credentials.remember)
   saveSession(session, credentials.remember)
@@ -90,6 +115,7 @@ export async function register(payload: RegisterPayload): Promise<AuthSession> {
     username: payload.username,
     company: payload.company,
     role: payload.role,
+    authProvider: 'email',
     createdAt: new Date().toISOString(),
   }
   const session = sessionFromUser(user, true)

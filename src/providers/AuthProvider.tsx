@@ -1,16 +1,18 @@
 'use client'
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   getSession,
   login as authLogin,
+  loginWithOAuth as authLoginWithOAuth,
   register as authRegister,
   logout as authLogout,
   requestPasswordReset,
   resetPassword,
   type AuthSession,
   type LoginCredentials,
+  type OAuthProvider,
   type RegisterPayload,
   type UserProfile,
 } from '@/services/auth'
@@ -20,6 +22,7 @@ type AuthContextValue = {
   session: AuthSession | null
   user: UserProfile | null
   login: (c: LoginCredentials) => Promise<void>
+  loginWithOAuth: (provider: OAuthProvider, opts?: { afterRegister?: boolean }) => Promise<void>
   register: (p: RegisterPayload) => Promise<void>
   logout: () => void
   forgotPassword: (email: string) => Promise<void>
@@ -29,8 +32,9 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+function AuthProviderInner({ children }: { children: React.ReactNode }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [ready, setReady] = useState(false)
   const [session, setSession] = useState<AuthSession | null>(null)
 
@@ -41,17 +45,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setReady(true)
   }, [refresh])
 
+  const postAuthRedirect = useCallback(
+    (fallback: string) => {
+      const redirect = searchParams.get('redirect')
+      router.push(redirect && redirect.startsWith('/') ? redirect : fallback)
+    },
+    [router, searchParams]
+  )
+
   const login = useCallback(async (c: LoginCredentials) => {
     const s = await authLogin(c)
     setSession(s)
-    router.push('/dashboard')
-  }, [router])
+    postAuthRedirect('/dashboard')
+  }, [postAuthRedirect])
+
+  const loginWithOAuth = useCallback(
+    async (provider: OAuthProvider, opts?: { afterRegister?: boolean }) => {
+      const s = await authLoginWithOAuth(provider)
+      setSession(s)
+      postAuthRedirect(opts?.afterRegister ? '/onboarding' : '/dashboard')
+    },
+    [postAuthRedirect]
+  )
 
   const register = useCallback(async (p: RegisterPayload) => {
     const s = await authRegister(p)
     setSession(s)
-    router.push('/onboarding')
-  }, [router])
+    postAuthRedirect('/onboarding')
+  }, [postAuthRedirect])
 
   const logout = useCallback(() => {
     authLogout()
@@ -73,16 +94,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       session,
       user: session?.user ?? null,
       login,
+      loginWithOAuth,
       register,
       logout,
       forgotPassword,
       doResetPassword,
       refresh,
     }),
-    [ready, session, login, register, logout, forgotPassword, doResetPassword, refresh]
+    [ready, session, login, loginWithOAuth, register, logout, forgotPassword, doResetPassword, refresh]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+}
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense fallback={null}>
+      <AuthProviderInner>{children}</AuthProviderInner>
+    </Suspense>
+  )
 }
 
 export function useAuth() {

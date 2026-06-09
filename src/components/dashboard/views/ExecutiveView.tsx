@@ -123,7 +123,7 @@ export default function ExecutiveView({ data }: { data: DashboardData }) {
     ),
     'system-status': (
       <MotionCard delay={0.35} className="h-full">
-        <SystemStatus healthScore={intel.forecast.avgHealth || data.healthScore} />
+        <SystemStatus healthScore={intel.forecast.avgHealth || data.healthScore} atRiskCount={intel.forecast.atRiskCount} />
       </MotionCard>
     ),
     insights: (
@@ -138,7 +138,7 @@ export default function ExecutiveView({ data }: { data: DashboardData }) {
     ),
     roadmap: (
       <MotionCard delay={0.55} fillChild className="h-full">
-        <RoadmapTimeline />
+        <RoadmapTimeline roadmap={intel.roadmap} />
       </MotionCard>
     ),
     collaboration: (
