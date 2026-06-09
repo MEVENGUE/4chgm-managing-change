@@ -21,9 +21,11 @@ export default function DashboardShell({ children }: { children: React.ReactNode
       <div className="dashboard-layout relative flex h-screen min-h-screen w-full overflow-hidden text-[var(--text-primary)]">
         <AmbientBackground variant="subtle" />
         <Sidebar />
-        <div className="relative z-10 flex flex-1 flex-col overflow-hidden">
-          <Topbar />
-          <main className="dashboard-main flex-1 overflow-y-auto overflow-x-hidden">
+        <div className="relative z-10 flex min-h-0 flex-1 flex-col">
+          <div className="relative z-50 shrink-0 overflow-visible">
+            <Topbar />
+          </div>
+          <main className="dashboard-main min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
             <OnboardingBanner />
             {children}
           </main>

@@ -13,7 +13,19 @@ import LanguageSwitcher from '@/components/layout/LanguageSwitcher'
 import { displayName } from '@/services/user/userService'
 import { useIntelligence } from '@/providers/IntelligenceProvider'
 
-function Dropdown({ open, onClose, children, className = '' }: { open: boolean; onClose: () => void; children: React.ReactNode; className?: string }) {
+function Dropdown({
+  open,
+  onClose,
+  children,
+  className = '',
+  align = 'right',
+}: {
+  open: boolean
+  onClose: () => void
+  children: React.ReactNode
+  className?: string
+  align?: 'left' | 'right'
+}) {
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!open) return
@@ -21,10 +33,18 @@ function Dropdown({ open, onClose, children, className = '' }: { open: boolean; 
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [open, onClose])
+  const alignClass = align === 'left' ? 'left-0 right-auto' : 'right-0 left-auto'
   return (
     <AnimatePresence>
       {open && (
-        <motion.div ref={ref} initial={{ opacity: 0, y: -8, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.96 }} transition={{ duration: 0.15 }} className={`dropdown-panel absolute right-0 top-full z-[120] mt-2 ${className}`}>
+        <motion.div
+          ref={ref}
+          initial={{ opacity: 0, y: -8, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -8, scale: 0.96 }}
+          transition={{ duration: 0.15 }}
+          className={`dropdown-panel absolute top-full z-[200] mt-2 ${alignClass} ${className}`}
+        >
           {children}
         </motion.div>
       )}
@@ -53,8 +73,25 @@ export default function Topbar() {
     <header className="topbar-glass flex items-center justify-between px-4 py-3 md:px-6" style={{ minHeight: 'var(--topbar-height)' }}>
       <div className="flex items-center gap-4 pl-12 md:pl-0">
         <span className="text-sm font-bold tracking-[0.18em] text-[var(--text-primary)] md:hidden">4CHGM</span>
-        <div className="relative hidden md:block">
-          <button onClick={() => { setWsOpen(!wsOpen); setNotifOpen(false); setProfileOpen(false) }} className="flex items-center gap-2.5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-1.5 transition hover:border-[var(--border-medium)]">
+        <div className="relative hidden overflow-visible md:block">
+          <button
+            type="button"
+            aria-expanded={wsOpen}
+            aria-haspopup="listbox"
+            onClick={() => { setWsOpen(!wsOpen); setNotifOpen(false); setProfileOpen(false) }}
+            className={`workspace-switcher-trigger relative flex items-center gap-2.5 rounded-2xl border px-3 py-1.5 transition ${
+              wsOpen
+                ? 'border-[var(--primary)] bg-[color-mix(in_srgb,var(--primary)_10%,var(--bg-surface))] shadow-[0_0_0_3px_color-mix(in_srgb,var(--primary)_18%,transparent)]'
+                : 'border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--border-medium)]'
+            }`}
+          >
+            {wsOpen && (
+              <span
+                className="pointer-events-none absolute left-0 top-1/2 h-[55%] w-[3px] -translate-y-1/2 rounded-full"
+                style={{ background: 'var(--sidebar-indicator)', boxShadow: '0 0 8px var(--glow-primary)' }}
+                aria-hidden
+              />
+            )}
             <span className="flex h-7 w-7 items-center justify-center rounded-lg text-white" style={{ background: activeWorkspace.accent }}>
               <Layers className="h-3.5 w-3.5" />
             </span>
@@ -62,25 +99,30 @@ export default function Topbar() {
               <span className="block text-[10px] leading-none text-[var(--text-muted)]">{orgName}</span>
               <span className="block text-xs font-semibold leading-tight text-[var(--text-primary)]">{activeWorkspace.name}</span>
             </span>
-            <ChevronsUpDown className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+            <ChevronsUpDown className={`h-3.5 w-3.5 transition ${wsOpen ? 'rotate-180 text-[var(--primary)]' : 'text-[var(--text-muted)]'}`} />
           </button>
-          <Dropdown open={wsOpen} onClose={() => setWsOpen(false)} className="w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden p-0 shadow-2xl">
+          <Dropdown
+            open={wsOpen}
+            onClose={() => setWsOpen(false)}
+            align="left"
+            className="workspace-dropdown-panel w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden p-0"
+          >
             <div className="border-b border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-4 py-3">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{t('common.workspaces')}</p>
               <p className="mt-1 truncate text-sm font-semibold text-[var(--text-primary)]">{orgName}</p>
             </div>
-            <div className="max-h-[min(22rem,55vh)] overflow-y-auto p-2 scrollbar-hide">
+            <div className="max-h-[min(22rem,55vh)] overflow-y-auto p-2 scrollbar-hide" role="listbox" aria-label={t('common.workspaces')}>
               {workspaces.map((ws) => {
                 const active = activeWorkspace.id === ws.id
                 return (
                   <button
                     key={ws.id}
                     type="button"
+                    role="option"
+                    aria-selected={active}
                     onClick={() => { setActiveWorkspace(ws.id); setWsOpen(false) }}
-                    className={`mb-1 flex w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left transition last:mb-0 ${
-                      active
-                        ? 'border-[var(--primary)]/35 bg-[color-mix(in_srgb,var(--primary)_12%,transparent)]'
-                        : 'border-transparent hover:border-[var(--border-subtle)] hover:bg-[var(--bg-surface-hover)]'
+                    className={`workspace-menu-item mb-1 flex w-full items-center gap-3 rounded-2xl border py-3 pr-3 text-left transition last:mb-0 ${
+                      active ? 'active pl-4' : 'border-transparent pl-3 hover:border-[var(--border-subtle)] hover:bg-[var(--bg-surface-hover)]'
                     }`}
                   >
                     <span
