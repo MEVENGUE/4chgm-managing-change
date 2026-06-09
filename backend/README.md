@@ -27,7 +27,7 @@ API docs: http://localhost:8000/docs
 1. Root Directory: `backend`
 2. Add **PostgreSQL** + **Redis** plugins (standard Railway Postgres works — no pgvector extension required)
 3. Set variables from `.env.example` (`DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGINS`, optional `OPENAI_API_KEY`)
-4. Deploy — `start.sh` runs Alembic migrations before uvicorn
+4. Deploy — `start.sh` starts uvicorn immediately (healthcheck `/health`), migrations run in background
 
 **Note:** Embeddings are stored as JSON arrays in PostgreSQL so deployments work on Railway's default Postgres. Migrations are idempotent (`IF NOT EXISTS`) and recover automatically if tables exist without `alembic_version` (common after a failed first deploy).
 
