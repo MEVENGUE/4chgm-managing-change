@@ -3,14 +3,16 @@ set -e
 
 PORT="${PORT:-8000}"
 
+# Migrations en arrière-plan — Uvicorn doit répondre vite au healthcheck Railway (/health)
 if [ -n "$DATABASE_URL" ]; then
-  echo "Running database migrations..."
-  if python scripts/ensure_migrations.py; then
-    echo "Migrations OK"
-  else
-    echo "ERROR: migrations failed — check DATABASE_URL and logs"
-    exit 1
-  fi
+  echo "Running database migrations (background)..."
+  (
+    if python scripts/ensure_migrations.py; then
+      echo "Migrations OK"
+    else
+      echo "WARN: migrations failed — check deploy logs; API still running"
+    fi
+  ) &
 else
   echo "WARN: DATABASE_URL not set — skipping migrations"
 fi

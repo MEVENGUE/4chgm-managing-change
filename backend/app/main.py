@@ -42,11 +42,30 @@ def root():
 
 @app.get("/health")
 def health():
-    db_ok = bool(settings.database_url)
+    """Liveness probe — must stay fast (Railway healthcheck)."""
     return {
         "status": "ok",
         "openai": settings.openai_enabled,
         "r2": settings.r2_enabled,
-        "database": db_ok,
+        "database_configured": bool(settings.database_url),
         "environment": settings.environment,
     }
+
+
+@app.get("/health/ready")
+def health_ready():
+    """Readiness probe — verifies database connectivity when configured."""
+    if not settings.database_url:
+        return {"status": "ok", "database": "not_configured"}
+    try:
+        from sqlalchemy import text
+
+        from app.database import engine
+
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return {"status": "ok", "database": "connected"}
+    except Exception as exc:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=503, detail={"status": "degraded", "database": str(exc)})
