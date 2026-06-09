@@ -2,11 +2,11 @@
 
 ## Overview
 
-Production FastAPI backend: auth, document intelligence, vector memory (pgvector), RAG copilot with SSE streaming, connectors, AI agents, PDF/PPT exports.
+Production FastAPI backend: auth, document intelligence, vector memory (JSON embeddings in PostgreSQL), RAG copilot with SSE streaming, connectors, AI agents, PDF/PPT exports.
 
 ```
 Vercel (Next.js) ──► Railway FastAPI (/api/v1)
-                         ├── PostgreSQL + pgvector
+                         ├── PostgreSQL (JSON embeddings; pgvector optional in dev)
                          ├── Redis + Celery workers
                          ├── Cloudflare R2
                          └── OpenAI (GPT + embeddings)
