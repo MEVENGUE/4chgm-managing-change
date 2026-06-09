@@ -3,10 +3,9 @@ set -e
 
 PORT="${PORT:-8000}"
 
-# Migrations avant démarrage — schéma requis pour auth/projets
 if [ -n "$DATABASE_URL" ]; then
-  echo "Running alembic migrations..."
-  if alembic upgrade head; then
+  echo "Running database migrations..."
+  if python scripts/ensure_migrations.py; then
     echo "Migrations OK"
   else
     echo "ERROR: migrations failed — check DATABASE_URL and logs"
